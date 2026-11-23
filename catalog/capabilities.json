@@ -1,5 +1,5 @@
 {
-  "version": "0.10.0-beta",
+  "version": "0.10.1-beta",
   "capabilities": [
     {
       "spec": {
@@ -715,7 +715,7 @@
           "key": "altruist:logging:console",
           "origin": "literal",
           "live": false,
-          "file": "Altruist/DI/AltruistDI.cs:112",
+          "file": "Altruist/DI/AltruistDI.cs:115",
           "gates": []
         }
       ],
@@ -1398,7 +1398,7 @@
           "key": "altruist:server:transport:tcp:host",
           "origin": "literal",
           "live": false,
-          "file": "Altruist/Testing/Clients/TestTcpClient.cs:61",
+          "file": "Altruist/Testing/Clients/TestTcpClient.cs:67",
           "gates": []
         },
         {
@@ -1997,7 +1997,7 @@
         },
         {
           "type": "Altruist.ClientSynchronizator",
-          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation.",
+          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation. Steps aside when the gaming implementation was registered first, so assembly scan order can't let it win.",
           "file": "Altruist/Core/Framework/Contracts/Router.cs"
         },
         {
@@ -2013,10 +2013,11 @@
           "contracts": [
             "Altruist.IClientSynchronizator"
           ],
-          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation.",
+          "summary": "Placeholder `IClientSynchronizator` registered when only the transport is configured. Throws `NotImplementedException`; enable the gaming module (`altruist:game`) for the working implementation. Steps aside when the gaming implementation was registered first, so assembly scan order can't let it win.",
           "file": "Altruist/Core/Framework/Contracts/Router.cs",
           "gates": [
-            "altruist:server:transport is set"
+            "altruist:server:transport is set",
+            "no other implementation is registered"
           ]
         }
       ],
@@ -3588,7 +3589,7 @@
       "spec": {
         "name": "migrations",
         "title": "Code-First Migrations",
-        "summary": "At every start Altruist compares your [Vault] models with the live database schema and applies the difference: new tables, columns, indexes, unique keys and foreign keys, renames and type changes. There are no migration files and no CLI. Destructive changes happen only when you ask for them.",
+        "summary": "At every start Altruist compares your [Vault] models with the live database schema and applies the difference: new tables, columns, indexes, unique keys and foreign keys, a primary key an existing table lacks, renames and type changes. There are no migration files and no CLI. Destructive changes happen only when you ask for them.",
         "use": [
           "When you add, rename or retype a column and want the database to follow the C# model on restart.",
           "When you move data between columns ([VaultColumnCopy], [VaultRenamedFrom]) or retire tables ([VaultTableDelete], [VaultArchived])."
@@ -4744,6 +4745,8 @@
           "When a socket handler must hand work to the loop (WaitForNextTick, SyncCommit) instead of locking shared state."
         ],
         "avoid": [
+          "When a [Cycle] method awaits something, do not declare it async void; the server refuses it at start. Return Task so the engine awaits it and reports its failures.",
+          "When a [Cycle] method must run once every N seconds, do not use CycleUnit.Seconds; it counts runs per second, so [Cycle(5, CycleUnit.Seconds)] runs 5 times a second. Use [Cycle(5, CycleUnit.IntervalSeconds)].",
           "When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.",
           "When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper."
         ],
@@ -4777,7 +4780,7 @@
           "altruist:game:engine",
           "altruist:game"
         ],
-        "example": "```yaml\naltruist:\n  game:\n    engine:\n      framerateHz: 120          # sampling rate of the loop\n      world-step: inline        # worker (default) or inline\n      fixed-step:\n        max-steps-per-frame: 8\n        overrun: drop           # drop | carry | slow-motion\n```\n\n```csharp\nusing Altruist.Gaming;\n\n// A 60 Hz simulation that the engine steps. Every FixedStep is exactly step.Dt long.\n[Service]\n[Service(typeof(IWorldStepper))]\npublic class MatchSimulation : IWorldStepper\n{\n    public StepMode Mode => StepMode.Fixed;\n    public int FixedHz => 60;\n\n    public void BeforeSteps(in FrameInfo frame) { }\n    public void FixedStep(in FixedStep step) => Advance(step.Dt);\n    public void AfterSteps(in FrameInfo frame) { }\n}\n\n// A method on the game loop, 10 times per second.\n[Cycle(10, CycleUnit.Hz)]\npublic void Housekeeping() { }\n```"
+        "example": "```yaml\naltruist:\n  game:\n    engine:\n      framerateHz: 120          # sampling rate of the loop\n      world-step: inline        # worker (default) or inline\n      fixed-step:\n        max-steps-per-frame: 8\n        overrun: drop           # drop | carry | slow-motion\n```\n\n```csharp\nusing Altruist.Gaming;\n\n// A 60 Hz simulation that the engine steps. Every FixedStep is exactly step.Dt long.\n[Service]\n[Service(typeof(IWorldStepper))]\npublic class MatchSimulation : IWorldStepper\n{\n    public StepMode Mode => StepMode.Fixed;\n    public int FixedHz => 60;\n\n    public void BeforeSteps(in FrameInfo frame) { }\n    public void FixedStep(in FixedStep step) => Advance(step.Dt);\n    public void AfterSteps(in FrameInfo frame) { }\n}\n\n// A method on the game loop, 10 times per second.\n[Cycle(10, CycleUnit.Hz)]\npublic void Housekeeping() { }\n\n// Once every 5 seconds, by wall clock.\n[Cycle(5, CycleUnit.IntervalSeconds)]\npublic void Regenerate() { }\n```"
       },
       "keyTypes": [
         {
@@ -4847,6 +4850,18 @@
           ],
           "summary": "Default `IEffectManager` (registered when `altruist:game` exists): steps effects at `CycleRate(30, CycleUnit.Seconds)`, i.e. about 30 times per second.",
           "file": "Altruist/Gaming/Main/Core/General/Engine/EffectManager.cs",
+          "gates": [
+            "altruist:game is set"
+          ]
+        },
+        {
+          "type": "Altruist.Engine.EngineFrameCounter",
+          "kind": "service",
+          "contracts": [
+            "Altruist.Engine.IEngineFrameCounter"
+          ],
+          "summary": "The frame counter the engine advances at the start of each frame.",
+          "file": "Altruist/Gaming/Main/Core/General/Engine/EngineFrameCounter.cs",
           "gates": [
             "altruist:game is set"
           ]
@@ -5039,7 +5054,8 @@
         ],
         "avoid": [
           "When you need a physics world that you own and step yourself, with no organizer, entities or visibility. Use [physics-2d].",
-          "When your game is rooms and matches rather than a persistent spatial world. Use the rooms package."
+          "When your game is rooms and matches rather than a persistent spatial world. Use the rooms package.",
+          "When you move a world object that has a physics body, do not assign only its Transform; the organizer copies the body's position into Transform after every step, so the object snaps back. Move the body too (body.Position, or the physics API's Teleport)."
         ],
         "packages": [
           "Altruist.Gaming"
@@ -5150,11 +5166,21 @@
           "contracts": [
             "Altruist.IClientSynchronizator"
           ],
-          "summary": "The gaming module's `IClientSynchronizator` (used through `Synchronize`): computes the changed `[Synced]` properties of an `ISynchronizedEntity` for the current engine tick (`CurrentTick`) and broadcasts them as one `SyncPacket` to every connected client. Registered as a singleton when `altruist:game` is configured, replacing the core placeholder that throws. When to use: simple delta sync of a few shared entities to everyone. It is not interest-managed: for per-client visibility in persistent worlds use the spatial broadcast / visibility services of the world organizers, and for authoritative match rooms send the game's own snapshots through `RoomHost` (Altruist.Gaming.Rooms).",
+          "summary": "The gaming module's `IClientSynchronizator` (used through `Synchronize`): computes the changed `[Synced]` properties of an `ISynchronizedEntity` for the current engine frame (`IEngineFrameCounter`) and broadcasts them as one `SyncPacket` to every connected client. Registered as a singleton when `altruist:game` is configured, replacing the core placeholder that throws. When to use: simple delta sync of a few shared entities to everyone. It is not interest-managed: for per-client visibility in persistent worlds use the spatial broadcast / visibility services of the world organizers, and for authoritative match rooms send the game's own snapshots through `RoomHost` (Altruist.Gaming.Rooms).",
           "file": "Altruist/Gaming/Main/Core/Router.cs",
           "gates": [
             "altruist:game is set"
           ]
+        },
+        {
+          "type": "Altruist.Gaming.VirtualIdAllocator",
+          "kind": "service",
+          "contracts": [
+            "Altruist.Gaming.IVirtualIdAllocator"
+          ],
+          "summary": "Sequential `IVirtualIdAllocator` starting at 1. Thread-safe.",
+          "file": "Altruist/Gaming/Main/Core/General/World/VirtualIdAllocator.cs",
+          "gates": []
         },
         {
           "type": "Altruist.Gaming.WorldCapacityContributor",
@@ -5678,7 +5704,8 @@
         "use": [
           "When your game is 3D (MMO, action, FPS).",
           "When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.",
-          "When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight)."
+          "When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).",
+          "When you need an object's VirtualId before it spawns (a player id sent at login); take it from IVirtualIdAllocator, the source the world manager uses, never from your own counter."
         ],
         "avoid": [
           "When your game is 2D. Use [worlds-2d].",
@@ -5700,6 +5727,7 @@
           "Altruist.Gaming.ThreeD.IGameWorldManager3D",
           "Altruist.Gaming.ThreeD.IWorldLoader3D",
           "Altruist.Gaming.ThreeD.WorldPartitioner3D",
+          "Altruist.Gaming.IVirtualIdAllocator",
           "Altruist.Gaming.ThreeD.TrajectoryRuntime3D",
           "Altruist.Gaming.EntitySyncService",
           "Altruist.Gaming.WorldIndex3D"
@@ -5727,6 +5755,11 @@
           "type": "Altruist.Gaming.ThreeD.WorldPartitioner3D",
           "summary": "Default `IWorldPartitioner3D` (3D mode): fixed-size cells read from `altruist:game:worlds:partitioner:width|height|depth` (default 64 each); the last cell on each axis is clipped to the world size.",
           "file": "Altruist/Gaming/Main/Core/3D/World/Partitioning/WorldPartition3D.cs"
+        },
+        {
+          "type": "Altruist.Gaming.IVirtualIdAllocator",
+          "summary": "The one source of `VirtualId` values in a process: the world manager draws from it when it spawns an object whose id is still 0, and game code draws from it for ids it needs before a spawn (a player's id sent at login, a ground item announced before it enters the world). Ids from separate counters collide on the wire.",
+          "file": "Altruist/Gaming/Main/Core/General/World/VirtualIdAllocator.cs"
         },
         {
           "type": "Altruist.Gaming.ThreeD.TrajectoryRuntime3D",
@@ -6298,7 +6331,7 @@
       "keyTypes": [
         {
           "type": "Altruist.Gaming.IZone",
-          "summary": "A named spatial region within a world. Zones must fit entirely inside a single partition. Multiple zones can exist within the same partition.",
+          "summary": "A named spatial region within a world. Zones must lie inside the world; a zone may span several partitions, and several zones can share a partition.",
           "file": "Altruist/Gaming/Main/Core/General/World/Zone.cs"
         },
         {
@@ -6323,7 +6356,7 @@
         },
         {
           "type": "Altruist.Gaming.ZoneValidationException",
-          "summary": "Thrown by `RegisterZone` when a zone is larger than a partition or does not fit inside one.",
+          "summary": "Thrown by `RegisterZone` when a zone's name is empty or taken, a size is not positive, or the zone reaches outside the world.",
           "file": "Altruist/Gaming/Main/Core/General/World/Zone.cs"
         }
       ],
@@ -6847,7 +6880,7 @@
       "keyTypes": [
         {
           "type": "Altruist.Gaming.ILagCompensationService",
-          "summary": "Server-side lag compensation service. Records entity position history each tick and provides temporal rewind so any module can validate actions against where entities were at the client's perceived time. Usage — any module can wrap its logic in RewindWorld: _lagCompensation.RewindWorld(clientTick, () => { // All Compensate() calls inside here return historical positions var (x, y, z) = _lagCompensation.Compensate(entity.VirtualId, entity.X, entity.Y, entity.Z); }); Enable: set altruist:game:lag-compensation = true Configure: altruist:game:lag-compensation:history-ticks (default 64) altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest) Ticks are engine frames (`AltruistEngine.CurrentTick`); history is recorded by the 3D world organizer after each world step, keyed by the 3D world object's `VirtualId`. Not thread-safe: rewind and record on the engine/world thread. The service is optional (registered only when the config key exists): inject it nullable and use `RewindOrRun`, which simply runs the action when compensation is off. Choosing: use this for server-authoritative hit validation in persistent 3D worlds (melee sweeps, hitscan) against what the client saw. Deterministic room simulations with client prediction usually don't need it (inputs are applied at their own step instead).",
+          "summary": "Server-side lag compensation service. Records entity position history each tick and provides temporal rewind so any module can validate actions against where entities were at the client's perceived time. Usage — any module can wrap its logic in RewindWorld: _lagCompensation.RewindWorld(clientTick, () => { // All Compensate() calls inside here return historical positions var (x, y, z) = _lagCompensation.Compensate(entity.VirtualId, entity.X, entity.Y, entity.Z); }); Enable: set altruist:game:lag-compensation = true Configure: altruist:game:lag-compensation:history-ticks (default 64) altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest) Ticks are engine frames (`Frame`); history is recorded by the 3D world organizer after each world step, keyed by the 3D world object's `VirtualId`. Not thread-safe: rewind and record on the engine/world thread. The service is optional (registered only when the config key exists): inject it nullable and use `RewindOrRun`, which simply runs the action when compensation is off. Choosing: use this for server-authoritative hit validation in persistent 3D worlds (melee sweeps, hitscan) against what the client saw. Deterministic room simulations with client prediction usually don't need it (inputs are applied at their own step instead).",
           "file": "Altruist/Gaming/Main/Core/General/LagCompensation/ILagCompensationService.cs"
         },
         {

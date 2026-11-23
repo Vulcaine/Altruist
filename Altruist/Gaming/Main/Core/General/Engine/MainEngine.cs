@@ -49,14 +49,11 @@ namespace Altruist.Engine;
 [ConditionalOnConfig("altruist:game:engine")]
 public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
 {
-    /// <summary>Frame counter of the most recently started engine frame (any engine instance).</summary>
-    public static long CurrentTick { get; private set; } = 0;
-
     private static readonly CycleRate EveryFrame = new(1, CycleUnit.Ticks);
 
     /// <summary>Engine frames run by this instance (the frame being run, while inside one).</summary>
-    public long Frame => Interlocked.Read(ref _frame);
-    private long _frame;
+    public long Frame => _frames.Frame;
+    private readonly EngineFrameCounter _frames;
 
     private readonly IEngineClock _clock;
     private readonly TimeProvider _timeProvider;
@@ -181,6 +178,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
     /// <param name="worldStep"><c>worker</c> (default) or <c>inline</c>; see <see cref="WorldStepMode"/>.</param>
     /// <param name="clock">Time source; default the real stopwatch.</param>
     /// <param name="timeProvider">Wall clock and timers for cron jobs; default <see cref="TimeProvider.System"/>.</param>
+    /// <param name="frames">The counter this engine advances and game code reads; default a counter of its own.</param>
     public AltruistEngine(
         IServerStatus serverStatus,
         IServiceProvider serviceProvider,
@@ -192,8 +190,10 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
         [AppConfigValue("altruist:game:engine:frequency")] int? frequency = null,
         [AppConfigValue("altruist:game:engine:world-step", "worker")] string? worldStep = null,
         IEngineClock? clock = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        EngineFrameCounter? frames = null)
     {
+        _frames = frames ?? new EngineFrameCounter();
         var engineFrequencyHz = framerateHz ?? frequency ?? 30;
         _serviceProvider = serviceProvider;
         _appStatus = serverStatus;
@@ -655,7 +655,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
     private void BeginFrame()
     {
         _frameStats.Begin();
-        CurrentTick = Interlocked.Increment(ref _frame);
+        _frames.Advance();
         AdoptPendingStaticTasks();
     }
 
@@ -782,7 +782,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
         {
             bool due;
 
-            long frame = _frame;
+            long frame = _frames.Frame;
             long interval = 0;
             long lastRun = 0;
             if (task.CycleRate.Unit == CycleUnit.Ticks)
@@ -841,7 +841,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
         if (_effectOrder.Count == 0)
             return;
 
-        long frame = _frame;
+        long frame = _frames.Frame;
         var removed = 0;
         for (var i = 0; i < _effectOrder.Count; i++)
         {
@@ -1127,8 +1127,9 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
     {
         CycleUnit.Ticks => rate.Value == 1 ? "every frame" : $"every {rate.Value} frames",
         CycleUnit.Hz => $"{rate.Value} Hz",
-        CycleUnit.Seconds => $"every {rate.Value} s",
-        CycleUnit.Milliseconds => $"every {rate.Value} ms",
+        CycleUnit.Seconds => $"{rate.Frequency}/s",
+        CycleUnit.Milliseconds => $"{rate.Frequency}/ms",
+        CycleUnit.IntervalSeconds => $"every {rate.Frequency} s",
         _ => rate.ToString() ?? "",
     };
 
@@ -1141,7 +1142,7 @@ public class AltruistEngine : IAltruistEngine, IEngineInspection, IDisposable
             CycleUnit.Hz => Math.Max(1, Stopwatch.Frequency / Math.Max(1, rate.Value)),
             // CycleRate stores Seconds/Milliseconds rates as the cycle period in TimeSpan ticks
             // (100 ns): [Cycle(30, CycleUnit.Seconds)] = 30 times per second.
-            CycleUnit.Milliseconds or CycleUnit.Seconds => Math.Max(1, (long)((double)Math.Max(1, rate.Value) * Stopwatch.Frequency / TimeSpan.TicksPerSecond)),
+            CycleUnit.Milliseconds or CycleUnit.Seconds or CycleUnit.IntervalSeconds => Math.Max(1, (long)((double)Math.Max(1, rate.Value) * Stopwatch.Frequency / TimeSpan.TicksPerSecond)),
 
             // IMPORTANT: Ticks are frames; do not convert to stopwatch ticks here.
             CycleUnit.Ticks => throw new InvalidOperationException("CycleUnit.Ticks represents frames; use frame-based scheduling."),

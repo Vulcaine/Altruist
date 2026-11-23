@@ -9,7 +9,7 @@ namespace Altruist.Gaming.ThreeD
 {
     /// <summary>
     /// Manages spatial zones in a 3D world.
-    /// Validates that every zone fits entirely inside a single partition.
+    /// Validates that every zone lies inside the world (the area its partitions cover); a zone may span partitions.
     /// </summary>
     /// <remarks>
     /// Obtain it through <see cref="IGameWorldManager3D.Zones"/> (one per world, created lazily); it is not a DI service.
@@ -25,23 +25,18 @@ namespace Altruist.Gaming.ThreeD
     public sealed class ZoneManager3D : IZoneManager3D
     {
         private readonly Dictionary<string, IZone3D> _zones = new(StringComparer.Ordinal);
-        private readonly IWorldPartitioner3D _partitioner;
         private readonly List<WorldPartitionManager3D> _partitions;
 
-        /// <summary>Creates a zone manager validating against the given partition grid.</summary>
-        /// <param name="partitioner">Partitioner providing the maximum zone size.</param>
-        /// <param name="partitions">The world's partitions (live list) used for containment checks.</param>
-        public ZoneManager3D(
-            IWorldPartitioner3D partitioner,
-            List<WorldPartitionManager3D> partitions)
+        /// <summary>Creates a zone manager validating against the world its partitions cover.</summary>
+        /// <param name="partitions">The world's partitions (live list); together they are the area a zone must lie inside.</param>
+        public ZoneManager3D(List<WorldPartitionManager3D> partitions)
         {
-            _partitioner = partitioner;
             _partitions = partitions;
         }
 
         /// <inheritdoc/>
         /// <exception cref="ArgumentNullException"><paramref name="zone"/> is <c>null</c>.</exception>
-        /// <exception cref="ZoneValidationException">Empty or duplicate name, zone larger than a partition, or not inside a single partition.</exception>
+        /// <exception cref="ZoneValidationException">Empty or duplicate name, a size that is not positive, or a zone reaching outside the world.</exception>
         public IZone3D RegisterZone(IZone3D zone)
         {
             if (zone is null)
@@ -53,24 +48,13 @@ namespace Altruist.Gaming.ThreeD
             if (_zones.ContainsKey(zone.Name))
                 throw new ZoneValidationException($"Zone '{zone.Name}' is already registered.");
 
-            // Validate: zone cannot be larger than one partition
-            if (zone.Size.X > _partitioner.PartitionWidth ||
-                zone.Size.Y > _partitioner.PartitionHeight ||
-                zone.Size.Z > _partitioner.PartitionDepth)
-            {
-                throw new ZoneValidationException(
-                    $"Zone '{zone.Name}' size ({zone.Size}) exceeds partition size " +
-                    $"({_partitioner.PartitionWidth}x{_partitioner.PartitionHeight}x{_partitioner.PartitionDepth}). " +
-                    $"A zone must fit inside a single partition.");
-            }
+            if (zone.Size.X <= 0 || zone.Size.Y <= 0 || zone.Size.Z <= 0)
+                throw new ZoneValidationException($"Zone '{zone.Name}' size ({zone.Size}) must be positive on every axis.");
 
-            // Validate: zone must be contained entirely within one partition
-            var containing = FindContainingPartition(zone);
-            if (containing is null)
+            if (!IsInsideWorld(zone))
             {
                 throw new ZoneValidationException(
-                    $"Zone '{zone.Name}' at {zone.Position} with size {zone.Size} " +
-                    $"does not fit entirely inside any single partition.");
+                    $"Zone '{zone.Name}' at {zone.Position} with size {zone.Size} reaches outside the world.");
             }
 
             _zones[zone.Name] = zone;
@@ -135,29 +119,24 @@ namespace Altruist.Gaming.ThreeD
         }
 
         /// <summary>
-        /// Finds the partition that fully contains the zone, or null if none does.
+        /// Whether the zone lies inside the box the partitions cover together. The partitions tile the world
+        /// without gaps, so that box is the world.
         /// </summary>
-        private WorldPartitionManager3D? FindContainingPartition(IZone3D zone)
+        private bool IsInsideWorld(IZone3D zone)
         {
-            int zMaxX = zone.Position.X + zone.Size.X;
-            int zMaxY = zone.Position.Y + zone.Size.Y;
-            int zMaxZ = zone.Position.Z + zone.Size.Z;
+            if (_partitions.Count == 0)
+                return false;
 
-            foreach (var partition in _partitions)
-            {
-                int pMaxX = partition.Position.X + partition.Size.X;
-                int pMaxY = partition.Position.Y + partition.Size.Y;
-                int pMaxZ = partition.Position.Z + partition.Size.Z;
+            int minX = _partitions.Min(p => p.Position.X);
+            int minY = _partitions.Min(p => p.Position.Y);
+            int minZ = _partitions.Min(p => p.Position.Z);
+            int maxX = _partitions.Max(p => p.Position.X + p.Size.X);
+            int maxY = _partitions.Max(p => p.Position.Y + p.Size.Y);
+            int maxZ = _partitions.Max(p => p.Position.Z + p.Size.Z);
 
-                if (zone.Position.X >= partition.Position.X && zMaxX <= pMaxX &&
-                    zone.Position.Y >= partition.Position.Y && zMaxY <= pMaxY &&
-                    zone.Position.Z >= partition.Position.Z && zMaxZ <= pMaxZ)
-                {
-                    return partition;
-                }
-            }
-
-            return null;
+            return zone.Position.X >= minX && zone.Position.X + zone.Size.X <= maxX &&
+                   zone.Position.Y >= minY && zone.Position.Y + zone.Size.Y <= maxY &&
+                   zone.Position.Z >= minZ && zone.Position.Z + zone.Size.Z <= maxZ;
         }
     }
 }

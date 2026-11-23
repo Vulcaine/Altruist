@@ -1,4 +1,5 @@
 using System.Numerics;
+using Altruist.Engine;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Networking;
@@ -40,7 +41,7 @@ public class EntitySyncServiceTests
     [Fact]
     public async Task Tick_ShouldNotThrow_WhenNoSendersConfigured()
     {
-        var service = new EntitySyncService(NullLoggerFactory.Instance);
+        var service = new EntitySyncService(NullLoggerFactory.Instance, new EngineFrameCounter());
 
         var obj = new TestSyncWorldObj(0, 0, "player1");
         var snapshot = CreateSnapshot(obj);
@@ -56,7 +57,7 @@ public class EntitySyncServiceTests
         var plainObj = new TestWorldObj(0, 0, clientId: "player1");
         var snapshot = CreateSnapshot(plainObj);
 
-        var service = new EntitySyncService(NullLoggerFactory.Instance);
+        var service = new EntitySyncService(NullLoggerFactory.Instance, new EngineFrameCounter());
         var ex = await Record.ExceptionAsync(() => service.Tick([snapshot], 25f));
         Assert.Null(ex);
     }
@@ -64,7 +65,7 @@ public class EntitySyncServiceTests
     [Fact]
     public async Task Tick_ShouldSkipEntitiesWithEmptyClientId()
     {
-        var service = new EntitySyncService(NullLoggerFactory.Instance);
+        var service = new EntitySyncService(NullLoggerFactory.Instance, new EngineFrameCounter());
         var obj = new TestSyncWorldObj(0, 0, ""); // empty ClientId
         var snapshot = CreateSnapshot(obj);
 
@@ -75,7 +76,7 @@ public class EntitySyncServiceTests
     [Fact]
     public async Task Tick_WithEmptySnapshots_ShouldNotThrow()
     {
-        var service = new EntitySyncService(NullLoggerFactory.Instance);
+        var service = new EntitySyncService(NullLoggerFactory.Instance, new EngineFrameCounter());
 
         var ex = await Record.ExceptionAsync(() => service.Tick([], 25f));
         Assert.Null(ex);

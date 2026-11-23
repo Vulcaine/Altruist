@@ -1411,7 +1411,7 @@ capabilities:
     title: Code-First Migrations
     summary: >-
       At every start Altruist compares your [Vault] models with the live database schema and applies the difference:
-      new tables, columns, indexes, unique keys and foreign keys, renames and type changes. There are no migration files
+      new tables, columns, indexes, unique keys and foreign keys, a primary key an existing table lacks, renames and type changes. There are no migration files
       and no CLI. Destructive changes happen only when you ask for them.
     use:
       - When you add, rename or retype a column and want the database to follow the C# model on restart.
@@ -1738,6 +1738,8 @@ capabilities:
       - When you need an authoritative simulation that steps at a fixed rate (for example a 60 Hz match) through IWorldStepper.
       - When a socket handler must hand work to the loop (WaitForNextTick, SyncCommit) instead of locking shared state.
     avoid:
+      - When a [Cycle] method awaits something, do not declare it async void; the server refuses it at start. Return Task so the engine awaits it and reports its failures.
+      - When a [Cycle] method must run once every N seconds, do not use CycleUnit.Seconds; it counts runs per second, so [Cycle(5, CycleUnit.Seconds)] runs 5 times a second. Use [Cycle(5, CycleUnit.IntervalSeconds)].
       - When you only need a periodic background job with no game state, and no game engine is configured. Use a plain hosted service.
       - When you need deterministic tick logic that the TypeScript client also runs. Write that logic with [flow] and call it from a stepper.
     packages:
@@ -1796,6 +1798,10 @@ capabilities:
       // A method on the game loop, 10 times per second.
       [Cycle(10, CycleUnit.Hz)]
       public void Housekeeping() { }
+
+      // Once every 5 seconds, by wall clock.
+      [Cycle(5, CycleUnit.IntervalSeconds)]
+      public void Regenerate() { }
       ```
 
   - name: worlds
@@ -1811,6 +1817,7 @@ capabilities:
     avoid:
       - When you need a physics world that you own and step yourself, with no organizer, entities or visibility. Use [physics-2d].
       - When your game is rooms and matches rather than a persistent spatial world. Use the rooms package.
+      - When you move a world object that has a physics body, do not assign only its Transform; the organizer copies the body's position into Transform after every step, so the object snaps back. Move the body too (body.Position, or the physics API's Teleport).
     packages:
       - Altruist.Gaming
     docs:
@@ -1908,6 +1915,7 @@ capabilities:
       - When your game is 3D (MMO, action, FPS).
       - When you load static geometry, colliders and archetype objects from a world JSON file, or replace the loader with IWorldLoader3D.
       - When you spawn objects with full physics (SpawnDynamicObject) or spatial tracking only (SpawnLightweight).
+      - When you need an object's VirtualId before it spawns (a player id sent at login); take it from IVirtualIdAllocator, the source the world manager uses, never from your own counter.
     avoid:
       - When your game is 2D. Use [worlds-2d].
       - When you only need terrain heights and walkability without physics. Use [terrain].
@@ -1924,6 +1932,7 @@ capabilities:
       - Altruist.Gaming.ThreeD.IGameWorldManager3D
       - Altruist.Gaming.ThreeD.IWorldLoader3D
       - Altruist.Gaming.ThreeD.WorldPartitioner3D
+      - Altruist.Gaming.IVirtualIdAllocator
       - Altruist.Gaming.ThreeD.TrajectoryRuntime3D
       - Altruist.Gaming.EntitySyncService
       - Altruist.Gaming.WorldIndex3D

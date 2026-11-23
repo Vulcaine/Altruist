@@ -2,6 +2,32 @@
 
 All notable changes to the Altruist framework are documented in this file.
 
+## [Unreleased]
+
+## [0.10.1-beta] - 2026-11-23
+
+Fixes from running a large 3D game on the framework. Two breaking changes: `AltruistEngine.CurrentTick` is replaced by the injected `IEngineFrameCounter`, and the zone managers take only the partition list.
+
+### Changed
+- **Each engine counts its own frames (`IEngineFrameCounter`)** — breaking: the static `AltruistEngine.CurrentTick` is gone. Two engines in one process (a test host's in-process root next to a live server) both wrote it, so a cooldown set against one engine's frame was checked against the other's. The engine advances the `EngineFrameCounter` service; game code injects `IEngineFrameCounter` and reads `Frame` (or `AltruistEngine.Frame`). The constructors of `GameClientSynchronizator`, `LagCompensationService`, `GameWorldOrganizer3D` and `EntitySyncService` take the counter.
+- **Zones may span partitions** — breaking: `ZoneManager2D` and `ZoneManager3D` take only the partition list. A zone had to fit inside one partition, though nothing used the containing partition, so maps placed at their real atlas coordinates could not be registered when they crossed a partition border. A zone now needs a positive size and has to lie inside the world.
+- **`IVirtualIdAllocator` is the one source of VirtualIds** — the 3D world manager draws from it for objects spawned with id 0 instead of a private static counter, and games take ids they need before a spawn from the same service, so ids from separate counters no longer collide on the wire.
+
+### Added
+- **`CycleUnit.IntervalSeconds`** — `[Cycle(5, CycleUnit.IntervalSeconds)]` runs once every 5 seconds by wall clock. Before, nothing slower than once a second could be declared except by counting frames or with cron (whole minutes), and `CycleUnit.Seconds` reads as a period although it counts runs per second: `[Cycle(5, CycleUnit.Seconds)]` runs 5 times a second.
+
+### Fixed
+- **A client that stops reading is dropped over TCP** — the outbound queues aborted it through `AltruistConnection.Abort`, which the TCP connection did not override, so the connection stayed open and received nothing. `TcpConnection.Abort` resets the socket, so the normal disconnect path runs; the abort warning names the packet types the queue held.
+- **Quest handlers for one subject run one at a time** — two kills firing together could interleave a quest's state changes; a failing handler's exception now reaches the caller as thrown instead of as a `TargetInvocationException`.
+- **Server start writes no "Failed to resolve" lines** — the PostConstruct pass skips open generic registrations, and authorization is registered in the web host whose endpoint data source its policy cache needs.
+- **A test class whose setup throws fails its tests with that exception** — instead of killing the test host, which left the run saying "No test is available". The TCP test client reads every frame as it arrives, as a game client does, and `DrainAsync` no longer cuts a frame in half.
+- **The 3D visibility tick no longer fails while entities spawn** — an observer's visible set was a plain `HashSet` that spawn and destroy handlers changed from another thread while the tick walked it, so activating a busy zone (thousands of spawns) failed ticks with "Collection was modified" and could corrupt the set. Each observer's set is now locked per access, the tick walks a copy, an entity is reported invisible only by whoever removed it, and no visibility event is raised under the lock. `GetVisibleEntities` returns a copy.
+- **`IAltruistRouter.Synchronize` is the gaming implementation whatever the assembly scan order** — the core placeholder that throws `NotImplementedException` won when the gaming assembly was scanned first, so every `Synchronize.SendAsync` threw with the gaming module on. The placeholder now steps aside when an `IClientSynchronizator` is already registered.
+- **`[PostConstruct]` runs on every provider's singletons** — the hook ran once per implementation type for the whole process, so a second service provider (a test class container, then the live test server) got singletons whose hooks never ran; `ServerStatus` never connected and the live server answered 503 "Service is not ready". The hook now runs once per instance: an instance registered under several service types, or processed again, still runs it once.
+- **The migrator adds a primary key an existing table lacks** — a table created without its key (by hand or by an older tool) was left as it was, and every save failed with 42P10 because the upsert's `ON CONFLICT` names the key. The diff now plans `AddPrimaryKeyOperation` (`ALTER TABLE … ADD PRIMARY KEY`); it fails loud when rows hold duplicate or NULL keys.
+- **An `async void` `[Cycle]` method is refused at start** — the scheduler wrapped it like a synchronous method, so the engine neither awaited it nor saw its exceptions: one failed socket write in it went to the thread pool and ended the process. Registration now throws and names the method; declare it `async Task`, which the engine awaits and whose failures it reports.
+- **The engine describes `Seconds` and `Milliseconds` rates correctly** — the dashboard and diagnostics showed the internal period in 100 ns ticks as seconds (`[Cycle(30, CycleUnit.Seconds)]` was "every 333333 s"); they now show "30/s".
+
 ## [0.10.0-beta] - 2026-11-22
 
 A complete standalone 2D physics world API (enough to run an authoritative match simulation on it), AI agents that live outside the world organizer, match hosting (rooms, matchmaking, lobbies) as three new packages, a 2D rotation helper, and the server as a fleet member: capacity, drain, multi-core room steps, metrics, and a fleet of servers that finds each other through a shared backplane (one configuration for one server or many). Existing code keeps compiling: the new interface members have defaults and the state machine accepts every existing context. Nothing changes at run time until configured: one step worker, unlimited capacity, and a drain only when the host stops (it finishes at once when no room host is bound). Coding agents get the framework through `altruist mcp`: its capability catalog, and the running server (read, and changed only with the user's approval). One breaking change: the unused `altruist:server:transport:websocket:path` key is gone.

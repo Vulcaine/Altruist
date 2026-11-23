@@ -140,7 +140,7 @@ public sealed class EngineCompatibilityTests
         var organizer2D = new GameWorldOrganizer2D(new Mock<IWorldPartitioner2D>().Object, new Mock<ICacheProvider>().Object,
             new Mock<IPhysxWorldEngineFactory2D>().Object, Array.Empty<IWorldIndex2D>());
         Assert.Equal(25f, organizer2D.EntitySyncHz);
-        var organizer3D = new GameWorldOrganizer3D(new Mock<IWorldLoader3D>().Object, Array.Empty<IWorldIndex3D>());
+        var organizer3D = new GameWorldOrganizer3D(new Mock<IWorldLoader3D>().Object, Array.Empty<IWorldIndex3D>(), new EngineFrameCounter());
         Assert.Equal(25f, organizer3D.EntitySyncHz);
 
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -154,6 +154,7 @@ public sealed class EngineCompatibilityTests
         services.AddSingleton<IEnumerable<IWorldIndex2D>>(Array.Empty<IWorldIndex2D>());
         services.AddSingleton(new Mock<IWorldLoader3D>().Object);
         services.AddSingleton<IEnumerable<IWorldIndex3D>>(Array.Empty<IWorldIndex3D>());
+        services.AddSingleton<IEngineFrameCounter>(new EngineFrameCounter());
         using var sp = services.BuildServiceProvider();
 
         var configured2D = (GameWorldOrganizer2D)DependencyResolver.CreateWithConfiguration(sp, cfg, typeof(GameWorldOrganizer2D), NullLogger.Instance);

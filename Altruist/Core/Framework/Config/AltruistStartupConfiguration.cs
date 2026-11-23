@@ -234,6 +234,9 @@ namespace Altruist
                 });
             }
 
+            // Authorization is web-host only: its policy cache reads the endpoint data source, which exists in the web
+            // host alone, so registering it in the process services broke resolving it from the root provider.
+            builder.Services.AddAuthorization();
             var mvcBuilder = builder.Services.AddControllers();
             var conditionLog = _loggerFactory.CreateLogger<AltruistStartupConfiguration>();
 

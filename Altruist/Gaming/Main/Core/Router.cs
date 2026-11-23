@@ -6,7 +6,7 @@ namespace Altruist.Gaming;
 /// <summary>
 /// The gaming module's <see cref="IClientSynchronizator"/> (used through <see cref="IAltruistRouter.Synchronize"/>):
 /// computes the changed <c>[Synced]</c> properties of an <see cref="ISynchronizedEntity"/> for the current
-/// engine tick (<see cref="AltruistEngine.CurrentTick"/>) and broadcasts them as one <see cref="SyncPacket"/>
+/// engine frame (<see cref="IEngineFrameCounter"/>) and broadcasts them as one <see cref="SyncPacket"/>
 /// to every connected client. Registered as a singleton when <c>altruist:game</c> is configured, replacing
 /// the core placeholder that throws.
 /// <para>
@@ -21,18 +21,21 @@ namespace Altruist.Gaming;
 public class GameClientSynchronizator : IClientSynchronizator
 {
     private readonly BroadcastSender _broadcast;
+    private readonly IEngineFrameCounter _frames;
 
     /// <summary>Created by DI.</summary>
     /// <param name="broadcastSender">Sends to every connected client.</param>
-    public GameClientSynchronizator(BroadcastSender broadcastSender)
+    /// <param name="frames">The engine frame the sync intervals are counted in.</param>
+    public GameClientSynchronizator(BroadcastSender broadcastSender, IEngineFrameCounter frames)
     {
         _broadcast = broadcastSender;
+        _frames = frames;
     }
 
     /// <inheritdoc/>
     public virtual async Task SendAsync(ISynchronizedEntity entity, bool forceAllAsChanged = false)
     {
-        var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(entity, entity.ClientId, AltruistEngine.CurrentTick, forceAllAsChanged);
+        var (changeMasks, maskCount, changedProperties) = Synchronization.GetChangedData(entity, entity.ClientId, _frames.Frame, forceAllAsChanged);
 
         bool anyChanges = false;
         for (int i = 0; i < maskCount; i++)

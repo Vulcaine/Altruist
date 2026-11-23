@@ -133,11 +133,24 @@ public sealed class TestPlayerSession : IAsyncDisposable
         if (!upgrade.IsSuccessStatusCode)
             throw new InvalidOperationException(
                 $"auth/upgrade failed ({(int)upgrade.StatusCode}): {await upgrade.Content.ReadAsStringAsync(ct)}");
-        await Tcp.SendAsync("enter-world", payload: null, ct);
-        await Task.Delay(2000, ct);
+        await EnterWorldAsync(ct);
         if (!captureSpawnBurst)
             await Tcp.DrainAsync(TimeSpan.FromSeconds(1));
     }
+
+    /// <summary>
+    /// Sends enter-world and waits for the server's first reply, which it sends once the player is spawned,
+    /// and at least the two seconds the spawn's follow-up work used to be given. Entering a zone that has to
+    /// be activated first (navmesh, spawns) can take longer than that.
+    /// </summary>
+    private async Task EnterWorldAsync(CancellationToken ct)
+    {
+        await Tcp.DrainAsync(TimeSpan.Zero);
+        await Tcp.SendAsync("enter-world", payload: null, ct);
+        await Task.WhenAll(Tcp.WaitForFrameAsync(EnterWorldTimeout), Task.Delay(2000, ct));
+    }
+
+    private static readonly TimeSpan EnterWorldTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>Resume an existing account. Skips signup, logs in fresh,
     /// joins with the existing character (index 0), completes the TCP
@@ -166,8 +179,7 @@ public sealed class TestPlayerSession : IAsyncDisposable
             throw new InvalidOperationException(
                 $"auth/upgrade failed: {await upgrade.Content.ReadAsStringAsync(ct)}");
 
-        await Tcp.SendAsync("enter-world", payload: null, ct);
-        await Task.Delay(2000, ct);
+        await EnterWorldAsync(ct);
         await Tcp.DrainAsync(TimeSpan.FromSeconds(1));
     }
 

@@ -3,6 +3,7 @@ Copyright 2025 Aron Gere
 Licensed under the Apache License, Version 2.0
 */
 
+using Altruist.Engine;
 using Altruist.Physx.ThreeD;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -79,6 +80,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IEntitySyncService? _entitySyncService;
         private readonly IAIBehaviorService? _aiBehaviorService;
         private readonly IPositionHistoryRecorder? _positionRecorder;
+        private readonly IEngineFrameCounter _frames;
         private IVisibilityTracker? _visibilityTracker;
         private readonly ILogger _logger;
         /// <summary>
@@ -100,6 +102,7 @@ namespace Altruist.Gaming.ThreeD
         /// </summary>
         /// <param name="worldLoader">Loader that builds a manager per world index.</param>
         /// <param name="gameWorlds">All configured world indices.</param>
+        /// <param name="frames">The engine frame position snapshots are recorded at.</param>
         /// <param name="entitySyncService">Optional entity sync service ticked each step.</param>
         /// <param name="aiBehaviorService">Optional AI service ticked each step.</param>
         /// <param name="positionRecorder">Optional lag-compensation position recorder.</param>
@@ -109,6 +112,7 @@ namespace Altruist.Gaming.ThreeD
         public GameWorldOrganizer3D(
             IWorldLoader3D worldLoader,
             IEnumerable<IWorldIndex3D> gameWorlds,
+            IEngineFrameCounter frames,
             IEntitySyncService? entitySyncService = null,
             IAIBehaviorService? aiBehaviorService = null,
             IPositionHistoryRecorder? positionRecorder = null,
@@ -121,6 +125,7 @@ namespace Altruist.Gaming.ThreeD
             _entitySyncService = entitySyncService;
             _aiBehaviorService = aiBehaviorService;
             _positionRecorder = positionRecorder;
+            _frames = frames;
             _engineFrequencyHz = entitySyncHz > 0 ? entitySyncHz : DefaultEntitySyncHz;
 
             if (gameWorlds is null)
@@ -223,7 +228,7 @@ namespace Altruist.Gaming.ThreeD
                 }
 
                 if (_positionRecorder != null)
-                    _positionRecorder.RecordSnapshot(Altruist.Engine.AltruistEngine.CurrentTick, EnumerateAllEntities(worlds));
+                    _positionRecorder.RecordSnapshot(_frames.Frame, EnumerateAllEntities(worlds));
 
                 var worldSnapshots = new WorldSnapshot[worlds.Length];
                 for (int i = 0; i < worlds.Length; i++)

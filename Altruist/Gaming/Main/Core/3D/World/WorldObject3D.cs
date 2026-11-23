@@ -205,9 +205,8 @@ namespace Altruist.Gaming.ThreeD
         public string InstanceId { get; set; } = Guid.NewGuid().ToString("N");
 
         /// <summary>
-        /// Network-friendly sequential ID. Auto-assigned by the world manager on spawn.
-        /// Used for compact wire protocol references. Preserved during hibernation.
-        /// Freed when the entity is destroyed.
+        /// Network-friendly sequential ID. Assigned from <see cref="IVirtualIdAllocator"/> by the world manager on spawn
+        /// when still 0. Used for compact wire protocol references. Preserved during hibernation; never reused.
         /// </summary>
         [VaultIgnore]
         public uint VirtualId { get; set; }

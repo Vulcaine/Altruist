@@ -251,6 +251,7 @@ public sealed class OutboundQueues
         }
         var start = false;
         var abort = false;
+        var queued = "";
         lock (q)
         {
             if (q.Dead || q.Aborted)
@@ -272,6 +273,7 @@ public sealed class OutboundQueues
             if (stuck || q.Items.Count > MaxQueuedPerClient)
             {
                 abort = q.Aborted = true;
+                queued = DescribeQueued(q.Items);
                 _metrics?.QueueDepthChanged(-q.Items.Count);
                 q.Items.Clear();
             }
@@ -281,12 +283,22 @@ public sealed class OutboundQueues
         if (abort)
         {
             _metrics?.SlowClientClosed();
-            _logger.LogWarning("aborting connection {Client}: not reading (send stuck or {Max}+ packets queued)", clientId, MaxQueuedPerClient);
+            _logger.LogWarning("aborting connection {Client}: not reading (send stuck or {Max}+ packets queued); queued: {Queued}",
+                clientId, MaxQueuedPerClient, queued);
             _ = AbortAsync(clientId);
         }
         else if (start)
             ThreadPool.UnsafeQueueUserWorkItem(q, preferLocal: false);
     }
+
+    /// <summary>What a slow client's queue held, by packet type, most frequent first: tells a burst the server
+    /// sent on purpose from a client that stopped reading.</summary>
+    private static string DescribeQueued(List<Item> items) =>
+        string.Join(", ", items
+            .GroupBy(i => i.Packet?.GetType().Name ?? (i.Close ? "close" : "raw"))
+            .OrderByDescending(g => g.Count())
+            .Take(8)
+            .Select(g => $"{g.Key}×{g.Count()}"));
 
     private async Task PumpAsync(ClientQueue q)
     {

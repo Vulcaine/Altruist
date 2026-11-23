@@ -443,6 +443,39 @@ public sealed class EngineLifecycleRegressionTests
         Assert.InRange(effectRuns, 10, 45);
     }
 
+    [Fact]
+    public void An_interval_seconds_rate_is_the_time_between_runs()
+    {
+        var everyFive = new CycleRate(5, CycleUnit.IntervalSeconds);
+        Assert.Equal(5, everyFive.Frequency);
+        Assert.Equal(5 * TimeSpan.TicksPerSecond, everyFive.Value);
+        Assert.Equal("⚡ every 5 s", new CycleAttribute(5, CycleUnit.IntervalSeconds).ToString());
+    }
+
+    [Fact]
+    public void An_interval_seconds_task_runs_once_per_interval()
+    {
+        var engine = NewEngine(hz: 200);
+        var runs = 0;
+        engine.ScheduleTask(new Action(() => Interlocked.Increment(ref runs)), new CycleRate(1, CycleUnit.IntervalSeconds));
+        engine.Start(default);
+        int taskRuns;
+        try
+        {
+            WaitUntil(() => Volatile.Read(ref runs) >= 1, "the first run");
+            var runs0 = Volatile.Read(ref runs);
+            Thread.Sleep(2500);
+            taskRuns = Volatile.Read(ref runs) - runs0;
+        }
+        finally
+        {
+            engine.Stop();
+        }
+
+        // One run per second: two (or three at the edges) in 2.5 s, never one per frame.
+        Assert.InRange(taskRuns, 2, 3);
+    }
+
     // ------------------------------------------------------------------ world step dt
 
     [Fact]

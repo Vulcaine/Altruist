@@ -65,7 +65,8 @@ namespace Altruist.Gaming
         void RemoveObserver(string clientId);
 
         /// <summary>
-        /// Returns the set of instance IDs currently visible to an observer.
+        /// Returns the set of instance IDs currently visible to an observer, as a copy taken now:
+        /// it does not follow later ticks, so call again for fresh data.
         /// </summary>
         IReadOnlySet<string>? GetVisibleEntities(string clientId);
 

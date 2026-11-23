@@ -153,7 +153,7 @@ public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
 
         return async ctx =>
         {
-            var result = method.Invoke(target, new object[] { ctx });
+            var result = method.Invoke(target, BindingFlags.DoNotWrapExceptions, null, new object[] { ctx }, null);
             return result switch
             {
                 Task<string?> task => await task,
@@ -171,7 +171,7 @@ public sealed class QuestStateDispatcher<TContext> where TContext : QuestContext
 
         return async ctx =>
         {
-            var result = method.Invoke(target, new object[] { ctx });
+            var result = method.Invoke(target, BindingFlags.DoNotWrapExceptions, null, new object[] { ctx }, null);
             switch (result)
             {
                 case Task task:

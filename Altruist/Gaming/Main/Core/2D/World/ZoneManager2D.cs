@@ -9,7 +9,7 @@ namespace Altruist.Gaming.TwoD
 {
     /// <summary>
     /// Manages spatial zones in a 2D world.
-    /// Validates that every zone fits entirely inside a single partition.
+    /// Validates that every zone lies inside the world (the area its partitions cover); a zone may span partitions.
     /// <para>Not registered in DI: each world creates its own lazily, reachable as
     /// <see cref="IGameWorldManager2D.Zones"/>. Lookups skip inactive zones; when zones overlap,
     /// <see cref="FindZoneAt"/> returns the first match in registration order. Not thread-safe.</para>
@@ -17,24 +17,19 @@ namespace Altruist.Gaming.TwoD
     public sealed class ZoneManager2D : IZoneManager2D
     {
         private readonly Dictionary<string, IZone2D> _zones = new(StringComparer.Ordinal);
-        private readonly IWorldPartitioner2D _partitioner;
         private readonly List<WorldPartition2D> _partitions;
 
         /// <summary>Creates a zone manager over a world's partitions.</summary>
-        /// <param name="partitioner">Supplies the partition size used to reject oversized zones.</param>
-        /// <param name="partitions">The world's partitions (live list) a zone must fit inside.</param>
-        public ZoneManager2D(
-            IWorldPartitioner2D partitioner,
-            List<WorldPartition2D> partitions)
+        /// <param name="partitions">The world's partitions (live list); together they are the area a zone must lie inside.</param>
+        public ZoneManager2D(List<WorldPartition2D> partitions)
         {
-            _partitioner = partitioner;
             _partitions = partitions;
         }
 
         /// <summary>Registers <paramref name="zone"/> after validating it.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="zone"/> is null.</exception>
-        /// <exception cref="ZoneValidationException">The name is empty or already used, the zone is larger
-        /// than one partition, or it is not fully inside a single partition.</exception>
+        /// <exception cref="ZoneValidationException">The name is empty or already used, a size is not positive,
+        /// or the zone reaches outside the world.</exception>
         public IZone2D RegisterZone(IZone2D zone)
         {
             if (zone is null)
@@ -46,23 +41,13 @@ namespace Altruist.Gaming.TwoD
             if (_zones.ContainsKey(zone.Name))
                 throw new ZoneValidationException($"Zone '{zone.Name}' is already registered.");
 
-            // Validate: zone cannot be larger than one partition
-            if (zone.Size.X > _partitioner.PartitionWidth ||
-                zone.Size.Y > _partitioner.PartitionHeight)
-            {
-                throw new ZoneValidationException(
-                    $"Zone '{zone.Name}' size ({zone.Size}) exceeds partition size " +
-                    $"({_partitioner.PartitionWidth}x{_partitioner.PartitionHeight}). " +
-                    $"A zone must fit inside a single partition.");
-            }
+            if (zone.Size.X <= 0 || zone.Size.Y <= 0)
+                throw new ZoneValidationException($"Zone '{zone.Name}' size ({zone.Size}) must be positive on every axis.");
 
-            // Validate: zone must be contained entirely within one partition
-            var containing = FindContainingPartition(zone);
-            if (containing is null)
+            if (!IsInsideWorld(zone))
             {
                 throw new ZoneValidationException(
-                    $"Zone '{zone.Name}' at {zone.Position} with size {zone.Size} " +
-                    $"does not fit entirely inside any single partition.");
+                    $"Zone '{zone.Name}' at {zone.Position} with size {zone.Size} reaches outside the world.");
             }
 
             _zones[zone.Name] = zone;
@@ -122,26 +107,21 @@ namespace Altruist.Gaming.TwoD
         }
 
         /// <summary>
-        /// Finds the partition that fully contains the zone, or null if none does.
+        /// Whether the zone lies inside the rectangle the partitions cover together. The partitions tile the
+        /// world without gaps, so that rectangle is the world.
         /// </summary>
-        private WorldPartition2D? FindContainingPartition(IZone2D zone)
+        private bool IsInsideWorld(IZone2D zone)
         {
-            int zMaxX = zone.Position.X + zone.Size.X;
-            int zMaxY = zone.Position.Y + zone.Size.Y;
+            if (_partitions.Count == 0)
+                return false;
 
-            foreach (var partition in _partitions)
-            {
-                int pMaxX = partition.Position.X + partition.Size.X;
-                int pMaxY = partition.Position.Y + partition.Size.Y;
+            int minX = _partitions.Min(p => p.Position.X);
+            int minY = _partitions.Min(p => p.Position.Y);
+            int maxX = _partitions.Max(p => p.Position.X + p.Size.X);
+            int maxY = _partitions.Max(p => p.Position.Y + p.Size.Y);
 
-                if (zone.Position.X >= partition.Position.X && zMaxX <= pMaxX &&
-                    zone.Position.Y >= partition.Position.Y && zMaxY <= pMaxY)
-                {
-                    return partition;
-                }
-            }
-
-            return null;
+            return zone.Position.X >= minX && zone.Position.X + zone.Size.X <= maxX &&
+                   zone.Position.Y >= minY && zone.Position.Y + zone.Size.Y <= maxY;
         }
     }
 }

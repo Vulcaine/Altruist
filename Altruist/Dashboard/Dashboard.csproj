@@ -10,7 +10,7 @@
     <AssemblyName>Altruist.Dashboard</AssemblyName>
     <RootNamespace>Altruist.Dashboard</RootNamespace>
     <Description>Dashboard module for Altruist framework.</Description>
-    <Version>0.10.0-beta</Version>
+    <Version>0.10.1-beta</Version>
     <Copyright>Copyright © 2025 Aron Gere</Copyright>
     <PackageReadmeFile>./README.md</PackageReadmeFile>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

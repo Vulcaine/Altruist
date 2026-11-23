@@ -88,6 +88,20 @@ internal sealed class AltruistClassRunner : XunitTestClassRunner
     {
         await base.AfterTestClassStartingAsync();
 
+        // A setup failure thrown out of a class runner escapes xUnit and kills the test host, so the run reports
+        // "No test is available" instead of the cause. Through the aggregator every test in the class fails with it,
+        // the way a failing class fixture does.
+        await Aggregator.RunAsync(PrepareClassAsync);
+    }
+
+    /// <summary>
+    /// Class setup threw: the live server or per-class schema the constructor arguments come from does not exist, so
+    /// they are reported unresolvable and every test fails with the setup exception.
+    /// </summary>
+    private bool ClassSetupFailed => Aggregator.HasExceptions;
+
+    private async Task PrepareClassAsync()
+    {
         if (_isIntegration)
         {
             await LiveServerHandle.EnsureStartedAsync();
@@ -133,7 +147,7 @@ internal sealed class AltruistClassRunner : XunitTestClassRunner
         if (_isIntegration)
             return base.CreateTestClassConstructorArguments();
 
-        if (!_altruistManaged)
+        if (!_altruistManaged || ClassSetupFailed)
             return base.CreateTestClassConstructorArguments();
 
         DisposeProvider();
@@ -240,6 +254,12 @@ internal sealed class AltruistClassRunner : XunitTestClassRunner
         if (base.TryGetConstructorArgument(constructor, index, parameter, out argumentValue))
             return true;
 
+        if (ClassSetupFailed)
+        {
+            argumentValue = null!;
+            return false;
+        }
+
         if (_isIntegration)
         {
             if (TryResolveIntegrationClient(parameter.ParameterType, out var client))
@@ -303,15 +323,20 @@ internal sealed class AltruistClassRunner : XunitTestClassRunner
         {
             DisposeProvider();
 
+            // Root rethrows a failed runtime build; through the aggregator xUnit reports it as a class cleanup failure
+            // instead of the test host dying on it.
             if (_altruistManaged && _attr!.KeepSchema == false)
-            {
-                var dataSource = AltruistTestRuntime.Root.GetService<NpgsqlDataSource>();
-                if (dataSource is not null)
-                {
-                    try { await SchemaIsolation.DropSchemaAsync(dataSource, _testSchema); }
-                    catch { /* best-effort cleanup; schema may not exist if setup never ran */ }
-                }
-            }
+                await Aggregator.RunAsync(DropClassSchemaAsync);
+        }
+    }
+
+    private async Task DropClassSchemaAsync()
+    {
+        var dataSource = AltruistTestRuntime.Root.GetService<NpgsqlDataSource>();
+        if (dataSource is not null)
+        {
+            try { await SchemaIsolation.DropSchemaAsync(dataSource, _testSchema); }
+            catch { /* best-effort cleanup; schema may not exist if setup never ran */ }
         }
     }
 

@@ -20,8 +20,6 @@ public static class AltruistBootstrap
     /// </summary>
     public static IServiceCollection Services => AltruistDI.Services;
 
-    private static readonly HashSet<string> _constructionCache = new();
-
     /// <summary>
     /// Loads all referenced assemblies, configures the Altruist logger, binds <see cref="ConfigurationPropertiesAttribute"/>
     /// classes, registers services (<see cref="BootstrapServices"/>), builds the root provider (published to
@@ -52,7 +50,7 @@ public static class AltruistBootstrap
 
         using var provider = Services.BuildServiceProvider();
         Dependencies.UseRootProvider(provider);
-        await RunPostConstructsAsync(provider);
+        await AltruistDI.RunPostConstructsAsync(provider, Services);
         Console.Error.WriteLine("[BOOTSTRAP] Running Modules...");
         await AltruistModuleConfig.RunModulesAsync(provider);
         Console.Error.WriteLine("[BOOTSTRAP] Starting HTTP...");
@@ -88,54 +86,4 @@ public static class AltruistBootstrap
             loggingBuilder.AddProvider(new AltruistLoggerProvider(frameworkVersion));
         });
     }
-
-    private static async Task RunPostConstructsAsync(IServiceProvider provider)
-    {
-        var cfg = AppConfigLoader.Load();
-        var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
-
-        var processedServiceTypes = new HashSet<Type>();
-
-        foreach (var descriptor in Services)
-        {
-            var serviceType = descriptor.ServiceType;
-            if (serviceType is null)
-                continue;
-
-            if (!processedServiceTypes.Add(serviceType))
-                continue;
-
-            object? instance;
-            // Resolved inline: the container reports a dependency cycle itself. A timeout on a pool thread here
-            // only misread a busy machine as a cycle and skipped the service's [PostConstruct].
-            try
-            {
-                instance = provider.GetService(serviceType);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[ALTRUIST] Failed to resolve '{serviceType.Name}': {ex.Message}");
-                continue;
-            }
-
-            if (instance is null)
-                continue;
-
-            var implType = instance.GetType();
-            if (!_constructionCache.Add(implType.FullName!))
-                continue;
-
-            if (!HasPostConstruct(implType))
-                continue;
-
-            Console.WriteLine($"[POSTCONSTRUCT] {implType.Name}...");
-            var log = loggerFactory.CreateLogger(implType);
-            await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
-            Console.WriteLine($"[POSTCONSTRUCT] {implType.Name} done.");
-        }
-    }
-
-    private static bool HasPostConstruct(Type type) =>
-        type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Any(m => m.GetCustomAttribute<PostConstructAttribute>(inherit: true) is not null);
 }
