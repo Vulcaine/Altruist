@@ -33,7 +33,7 @@ public class WorldLoader3DShapeAndModeTests
         index.SetupGet(i => i.Index).Returns(0);
         index.SetupGet(i => i.Name).Returns("test");
         index.SetupProperty(i => i.Size, new IntVector3(64, 64, 64));
-        var loader = new WorldLoader3D(new WorldPartitioner3D(64, 64, 64), new JsonSerializerOptions(), physicsEnabled: false);
+        var loader = new WorldLoader3D(new WorldPartitioner3D(64, 64, 64), new JsonSerializerOptions(), new VirtualIdAllocator(), physicsEnabled: false);
 
         await loader.LoadFromJson(index.Object, Json);
 

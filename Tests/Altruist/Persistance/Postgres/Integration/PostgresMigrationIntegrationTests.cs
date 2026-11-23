@@ -98,4 +98,22 @@ public sealed class PostgresMigrationIntegrationTests
             $"SELECT COUNT(*) FROM pg_indexes WHERE schemaname = '{PostgresDatabaseFixture.Schema}' AND tablename = 'it_indexed' AND indexdef LIKE '%(owner)%'"));
         Assert.Equal(1, indexes);
     }
+
+    [PostgresFact]
+    public async Task A_table_without_its_primary_key_gets_it_back_so_saves_can_upsert()
+    {
+        var migrator = NewMigrator();
+        await migrator.Migrate(new[] { typeof(ItMissingPrimaryKey) });
+        await _db.CommittedScalarAsync(
+            $"ALTER TABLE \"{PostgresDatabaseFixture.Schema}\".\"it_missing_pk\" DROP CONSTRAINT \"it_missing_pk_pkey\"");
+
+        // Before the fix the migrator planned nothing here and every save failed with 42P10 (ON CONFLICT without a key).
+        await migrator.Migrate(new[] { typeof(ItMissingPrimaryKey) });
+
+        var primaryKey = await _db.CommittedScalarAsync(
+            "SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid " +
+            "JOIN pg_namespace n ON n.oid = t.relnamespace " +
+            $"WHERE n.nspname = '{PostgresDatabaseFixture.Schema}' AND t.relname = 'it_missing_pk' AND c.contype = 'p'");
+        Assert.Equal("PRIMARY KEY (id)", primaryKey);
+    }
 }

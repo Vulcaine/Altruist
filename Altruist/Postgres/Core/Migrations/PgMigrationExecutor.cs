@@ -61,6 +61,10 @@ namespace Altruist.Migrations.Postgres
         private const string AlterTableDropColumnTemplate =
             "ALTER TABLE {table_fqn} DROP COLUMN IF EXISTS {column_ident} CASCADE;";
 
+        // Unnamed, so Postgres names it <table>_pkey exactly as CREATE TABLE ... PRIMARY KEY does.
+        private const string AddPrimaryKeyTemplate =
+            "ALTER TABLE {table_fqn} ADD PRIMARY KEY ({column_list});";
+
         private const string AddUniqueConstraintTemplate =
             "ALTER TABLE {table_fqn} ADD CONSTRAINT {constraint_name} UNIQUE ({column_list});";
 
@@ -391,6 +395,18 @@ namespace Altruist.Migrations.Postgres
         // --------------------------------
         // CONSTRAINT OPERATIONS
         // --------------------------------
+
+        /// <inheritdoc/>
+        /// <remarks><c>ADD PRIMARY KEY (...)</c>; fails if existing rows hold duplicate or NULL keys.</remarks>
+        protected override async Task ApplyAddPrimaryKeyAsync(string defaultSchema, AddPrimaryKeyOperation addPrimaryKey)
+        {
+            var schemaName = string.IsNullOrWhiteSpace(addPrimaryKey.Schema) ? defaultSchema : addPrimaryKey.Schema;
+            var sql = AddPrimaryKeyTemplate
+                .Replace("{table_fqn}", $"{QuoteIdent(schemaName)}.{QuoteIdent(addPrimaryKey.Table)}")
+                .Replace("{column_list}", string.Join(", ", addPrimaryKey.Columns.Select(QuoteIdent)));
+
+            await _provider.ExecuteAsync(sql);
+        }
 
         /// <inheritdoc/>
         /// <remarks><c>ADD CONSTRAINT ... UNIQUE (...)</c>; fails if existing rows violate it.</remarks>

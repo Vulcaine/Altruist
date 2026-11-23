@@ -10,7 +10,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>altruist</ToolCommandName>
     <PackageId>Altruist.CLI</PackageId>
-    <Version>0.10.0-beta</Version>
+    <Version>0.10.1-beta</Version>
     <Authors>Aron Gere</Authors>
     <Description>CLI tool for the Altruist game server framework: create and run projects, and an MCP server that gives coding agents the capability catalog and a read-only view of the running server.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

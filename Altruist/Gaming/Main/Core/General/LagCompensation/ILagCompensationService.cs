@@ -23,7 +23,7 @@ namespace Altruist.Gaming;
 ///   altruist:game:lag-compensation:history-ticks (default 64)
 ///   altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest)
 ///
-/// <para>Ticks are engine frames (<c>AltruistEngine.CurrentTick</c>); history is recorded by the 3D world
+/// <para>Ticks are engine frames (<see cref="Altruist.Engine.IEngineFrameCounter.Frame"/>); history is recorded by the 3D world
 /// organizer after each world step, keyed by the 3D world object's <c>VirtualId</c>. Not thread-safe:
 /// rewind and record on the engine/world thread. The service is optional (registered only when the
 /// config key exists): inject it nullable and use <see cref="LagCompensationExtensions.RewindOrRun(ILagCompensationService, long, Action)"/>,

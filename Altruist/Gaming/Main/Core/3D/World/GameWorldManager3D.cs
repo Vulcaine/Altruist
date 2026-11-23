@@ -262,7 +262,7 @@ namespace Altruist.Gaming.ThreeD
         private readonly IPhysxBodyApiProvider3D? _bodyApi;
         private readonly IPhysxColliderApiProvider3D? _colliderApi;
 
-        private static uint _nextVirtualId = 1;
+        private readonly IVirtualIdAllocator _virtualIds;
 
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IWorldObject3D> _flatInstanceCache = new();
         private ZoneManager3D? _zoneManager;
@@ -308,12 +308,14 @@ namespace Altruist.Gaming.ThreeD
         /// <param name="world">World configuration (size drives the partition grid).</param>
         /// <param name="physx3D">Physics world, or <c>null</c> to run without physics.</param>
         /// <param name="worldPartitioner">Partitioner that splits the world into partitions.</param>
+        /// <param name="virtualIds">Source of the <see cref="IWorldObject3D.VirtualId"/> given to objects spawned with id 0.</param>
         /// <param name="bodyApi">Body factory; required (with <paramref name="colliderApi"/>) for real physics bodies.</param>
         /// <param name="colliderApi">Collider factory; required (with <paramref name="bodyApi"/>) for real physics bodies.</param>
         public GameWorldManager3D(
             IWorldIndex3D world,
             IPhysxWorld3D? physx3D,
             IWorldPartitioner3D worldPartitioner,
+            IVirtualIdAllocator virtualIds,
             IPhysxBodyApiProvider3D? bodyApi = null,
             IPhysxColliderApiProvider3D? colliderApi = null
         )
@@ -322,6 +324,7 @@ namespace Altruist.Gaming.ThreeD
             _bodyApi = bodyApi;
             _colliderApi = colliderApi;
             _worldPartitioner = worldPartitioner;
+            _virtualIds = virtualIds;
             _physicsEnabled = physx3D != null;
 
             _physx3D = physx3D;
@@ -334,7 +337,7 @@ namespace Altruist.Gaming.ThreeD
         /// <inheritdoc/>
         public IWorldIndex3D Index => _index;
         /// <inheritdoc/>
-        public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_worldPartitioner, _partitions);
+        public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_partitions);
 
         /// <summary>
         /// Computes the partition grid from <see cref="Index"/> and registers the partitions. Called by the constructor;
@@ -508,10 +511,10 @@ namespace Altruist.Gaming.ThreeD
             return colliders != null && colliders.Any(c => !c.IsTrigger);
         }
 
-        private static void EnsureSpawnMetadata(IWorldObject3D obj)
+        private void EnsureSpawnMetadata(IWorldObject3D obj)
         {
             if (obj.VirtualId == 0)
-                obj.VirtualId = Interlocked.Increment(ref _nextVirtualId);
+                obj.VirtualId = _virtualIds.Allocate();
 
             obj.ObjectArchetype = obj is AnonymousWorldObject3D
                 ? obj.ObjectArchetype

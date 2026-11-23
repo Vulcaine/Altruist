@@ -48,6 +48,48 @@ public sealed class InMemoryQuestStateStore : IQuestStateStore
     }
 }
 
+public sealed class OverlapDetectingStateStore : IQuestStateStore
+{
+    private int _active;
+    private int _saveCount;
+    private int _maxConcurrentSaves;
+
+    public int SaveCount => Volatile.Read(ref _saveCount);
+    public int MaxConcurrentSaves => Volatile.Read(ref _maxConcurrentSaves);
+
+    public Task<Dictionary<string, QuestState>> LoadAsync(string subjectId) =>
+        Task.FromResult(new Dictionary<string, QuestState>(StringComparer.Ordinal));
+
+    public async Task SaveDirtyAsync(string subjectId, IReadOnlyDictionary<string, QuestState> states)
+    {
+        int active = Interlocked.Increment(ref _active);
+        int seen;
+        do { seen = Volatile.Read(ref _maxConcurrentSaves); }
+        while (active > seen && Interlocked.CompareExchange(ref _maxConcurrentSaves, active, seen) != seen);
+
+        // The delay keeps a save open long enough for an unserialized second fire to land inside it.
+        await Task.Delay(20);
+        foreach (var state in states.Values)
+            state.MarkClean();
+        Interlocked.Increment(ref _saveCount);
+        Interlocked.Decrement(ref _active);
+    }
+
+    public Task ResetAsync(string subjectId) => Task.CompletedTask;
+}
+
+[QuestHook("throw")]
+public interface IOnTestThrow : IQuestHook<TestQuestContext>
+{
+    Task OnThrow(TestQuestContext ctx);
+}
+
+[Quest("test.throwing")]
+public sealed class ThrowingQuest : QuestBehavior<TestQuestContext>, IOnTestThrow
+{
+    public Task OnThrow(TestQuestContext ctx) => throw new KeyNotFoundException("unmapped key");
+}
+
 public sealed class RecordingQuestUpdateSink : IQuestUpdateSink<TestQuestContext>
 {
     public List<QuestUpdate> Updates { get; } = [];
@@ -423,10 +465,43 @@ public sealed class QuestRuntimeTests
         Assert.Equal(1, fixture.Store.ResetCount);
     }
 
+    [Fact]
+    public async Task ConcurrentFiresForOneSubject_RunOneAtATime()
+    {
+        var store = new OverlapDetectingStateStore();
+        var runtime = CreateRuntime(store, new RecordingQuestUpdateSink(), allowRequirement: true);
+        var context = new TestQuestContext { SubjectId = "subject-burst" };
+
+        await Task.WhenAll(Enumerable.Range(1, 8)
+            .Select(victim => Task.Run(() => runtime.FireAsync(context, QuestTrigger.Kill, targetId: victim))));
+
+        Assert.True(store.SaveCount > 0);
+        Assert.Equal(1, store.MaxConcurrentSaves);
+    }
+
+    [Fact]
+    public async Task HandlerException_ReachesCallerUnwrapped()
+    {
+        var fixture = CreateRuntime("subject-throw");
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => fixture.Runtime.FireQuestHookAsync(fixture.Context, "test.throwing", "throw"));
+    }
+
     private static RuntimeFixture CreateRuntime(string subjectId, bool allowRequirement = true)
     {
         var store = new InMemoryQuestStateStore();
         var sink = new RecordingQuestUpdateSink();
+        return new RuntimeFixture(
+            CreateRuntime(store, sink, allowRequirement),
+            store,
+            sink,
+            new TestQuestContext { SubjectId = subjectId });
+    }
+
+    private static QuestRuntime<TestQuestContext> CreateRuntime(
+        IQuestStateStore store, RecordingQuestUpdateSink sink, bool allowRequirement)
+    {
         var requirements = new QuestRequirementRegistry<TestQuestContext>()
             .Add("allow", ctx => allowRequirement);
 
@@ -448,12 +523,7 @@ public sealed class QuestRuntimeTests
             });
 
         runtime.LoadFromAssembly(Assembly.GetExecutingAssembly());
-
-        return new RuntimeFixture(
-            runtime,
-            store,
-            sink,
-            new TestQuestContext { SubjectId = subjectId });
+        return runtime;
     }
 
     private sealed record RuntimeFixture(

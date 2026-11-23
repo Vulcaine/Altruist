@@ -20,7 +20,8 @@ namespace Altruist.Gaming.ThreeD
     /// For 2D use <see cref="Altruist.Gaming.TwoD.VisibilityTracker2D"/>.</para>
     /// <para>Observers must be registered explicitly with <see cref="Observe"/> and need a non-empty <c>ClientId</c>.
     /// With 4+ observers the work runs in <see cref="Parallel"/> and events fire on thread-pool threads, so subscribers
-    /// must be thread-safe; with 8+ observers only half of them (alternating groups) are refreshed per tick (an observer
+    /// must be thread-safe (spawns and destroys raised from other threads while a tick runs are safe: each observer's
+    /// set is locked per access and no event is raised under the lock); with 8+ observers only half of them (alternating groups) are refreshed per tick (an observer
     /// not refreshed keeps its previous visible set, and those entities count as observed for hibernation).
     /// Above 200 objects a spatial hash grid (cell size max(ViewRange/2, 500)) is used as broadphase.</para>
     /// <para>When an <see cref="IEntityHibernationService"/> is registered, hibernated entities near observers are woken
@@ -43,7 +44,7 @@ namespace Altruist.Gaming.ThreeD
         private IGameWorldOrganizer3D? _organizer;
         private readonly IEntityHibernationService? _hibernation;
         private readonly ISpatialCollisionDispatcher? _collisionDispatcher;
-        private readonly ConcurrentDictionary<string, HashSet<string>> _visibleSets = new();
+        private readonly ConcurrentDictionary<string, VisibleSet> _visibleSets = new();
         private readonly ConcurrentDictionary<string, IWorldObject3D> _observers = new();
         private readonly ConcurrentDictionary<string, string> _observerInstanceIds = new();
 
@@ -139,7 +140,7 @@ namespace Altruist.Gaming.ThreeD
                 var op = observer.Transform.Position;
                 if (DistanceSq(op, objPos) > rangeSq) continue;
 
-                var visibleSet = _visibleSets.GetOrAdd(observerClientId, static _ => new HashSet<string>());
+                var visibleSet = _visibleSets.GetOrAdd(observerClientId, static _ => new VisibleSet());
                 if (!visibleSet.Add(instanceId)) continue;
 
                 OnEntityVisible?.Invoke(new VisibilityChange
@@ -246,7 +247,7 @@ namespace Altruist.Gaming.ThreeD
         private void CountStillVisible(string clientId)
         {
             if (!_visibleSets.TryGetValue(clientId, out var visible)) return;
-            foreach (var id in visible)
+            foreach (var id in visible.Snapshot())
                 _observerCounts.AddOrUpdate(id, 1, (_, c) => c + 1);
         }
 
@@ -489,7 +490,7 @@ namespace Altruist.Gaming.ThreeD
             IReadOnlyDictionary<string, ITypelessWorldObject> lookup,
             List<string> removeBuf)
         {
-            var previouslyVisible = _visibleSets.GetOrAdd(clientId, static _ => new HashSet<string>());
+            var previouslyVisible = _visibleSets.GetOrAdd(clientId, static _ => new VisibleSet());
 
             // Entities that just became visible
             foreach (var instanceId in currentlyVisible)
@@ -510,9 +511,11 @@ namespace Altruist.Gaming.ThreeD
                 }
             }
 
-            // Entities that just became invisible
+            // Entities that just became invisible. Spawn/destroy threads mutate the set
+            // concurrently, so walk a copy and only raise for ids this pass actually removed.
             removeBuf.Clear();
-            foreach (var instanceId in previouslyVisible)
+            previouslyVisible.CopyTo(removeBuf);
+            foreach (var instanceId in removeBuf)
             {
                 if (!currentlyVisible.Contains(instanceId))
                 {
@@ -530,7 +533,9 @@ namespace Altruist.Gaming.ThreeD
                                 continue;
                         }
 
-                        removeBuf.Add(instanceId);
+                        if (!previouslyVisible.Remove(instanceId))
+                            continue;
+
                         OnEntityInvisible?.Invoke(new VisibilityChange
                         {
                             ObserverClientId = clientId,
@@ -542,13 +547,10 @@ namespace Altruist.Gaming.ThreeD
                     }
                     else
                     {
-                        removeBuf.Add(instanceId);
+                        previouslyVisible.Remove(instanceId);
                     }
                 }
             }
-
-            for (int i = 0; i < removeBuf.Count; i++)
-                previouslyVisible.Remove(removeBuf[i]);
         }
 
         /// <inheritdoc/>
@@ -572,7 +574,7 @@ namespace Altruist.Gaming.ThreeD
         /// <inheritdoc/>
         public IReadOnlySet<string>? GetVisibleEntities(string clientId)
         {
-            return _visibleSets.TryGetValue(clientId, out var set) ? set : null;
+            return _visibleSets.TryGetValue(clientId, out var set) ? set.Snapshot() : null;
         }
 
         /// <inheritdoc/>
@@ -635,7 +637,7 @@ namespace Altruist.Gaming.ThreeD
                 foreach (var world in _organizer.GetAllWorlds())
                 {
                     var (_, lookup) = world.GetCachedSnapshot();
-                    foreach (var instanceId in visible)
+                    foreach (var instanceId in visible.Snapshot())
                     {
                         if (lookup.TryGetValue(instanceId, out var target))
                         {
@@ -655,6 +657,28 @@ namespace Altruist.Gaming.ThreeD
 
             if (_observers.TryRemove(clientId, out var observerToRemove))
                 _observerInstanceIds.TryRemove(observerToRemove.InstanceId, out _);
+        }
+
+        /// <summary>
+        /// One observer's visible ids. The visibility tick, spawn/destroy handlers and broadcast
+        /// readers touch it from different threads, so every access goes through the lock and
+        /// enumeration happens over copies. Events are never raised while the lock is held.
+        /// </summary>
+        private sealed class VisibleSet
+        {
+            private readonly HashSet<string> _ids = new();
+
+            public int Count { get { lock (_ids) return _ids.Count; } }
+
+            public bool Add(string id) { lock (_ids) return _ids.Add(id); }
+
+            public bool Remove(string id) { lock (_ids) return _ids.Remove(id); }
+
+            public bool Contains(string id) { lock (_ids) return _ids.Contains(id); }
+
+            public HashSet<string> Snapshot() { lock (_ids) return new HashSet<string>(_ids); }
+
+            public void CopyTo(List<string> buffer) { lock (_ids) buffer.AddRange(_ids); }
         }
 
         private static float DistanceSq(

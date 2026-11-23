@@ -28,15 +28,18 @@ public sealed class EntitySyncService : IEntitySyncService
     private readonly ClientSender? _clientSender;
     private readonly BroadcastSender? _broadcastSender;
     private readonly ILogger _logger;
+    private readonly IEngineFrameCounter _frames;
     private uint _tickCounter;
 
     /// <summary>Creates the service; without a <see cref="ClientSender"/> or <see cref="BroadcastSender"/> it does nothing.</summary>
     /// <param name="loggerFactory">Logger factory.</param>
+    /// <param name="frames">The engine frame the sync intervals are counted in.</param>
     /// <param name="visibilityTracker">Optional tracker; when present, changes are sent to every observer of the entity.</param>
     /// <param name="clientSender">Per-client sender (preferred delivery path).</param>
     /// <param name="broadcastSender">Fallback: broadcast to all clients when no <paramref name="clientSender"/> is available.</param>
     public EntitySyncService(
         ILoggerFactory loggerFactory,
+        IEngineFrameCounter frames,
         IVisibilityTracker? visibilityTracker = null,
         ClientSender? clientSender = null,
         BroadcastSender? broadcastSender = null)
@@ -45,6 +48,7 @@ public sealed class EntitySyncService : IEntitySyncService
         _clientSender = clientSender;
         _broadcastSender = broadcastSender;
         _logger = loggerFactory.CreateLogger<EntitySyncService>();
+        _frames = frames;
     }
 
     private static readonly ConcurrentDictionary<Type, SynchronizedAttribute?> _syncAttrCache = new();
@@ -98,7 +102,7 @@ public sealed class EntitySyncService : IEntitySyncService
         // every other monster on the same tick, producing garbage diffs.
         // The world object's InstanceId is the stable per-entity identifier.
         using var changes = Synchronization.GetSyncChanges(
-            entity, worldObj.InstanceId, AltruistEngine.CurrentTick);
+            entity, worldObj.InstanceId, _frames.Frame);
 
         if (!changes.HasChanges) return;
 

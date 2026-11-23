@@ -16,6 +16,7 @@ limitations under the License.
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -137,7 +138,7 @@ public class MethodScheduler
 
     /// <summary>Scans <paramref name="serviceProvider"/>'s services for <c>[Cycle]</c> methods and schedules
     /// them; returns the methods registered so far.</summary>
-    /// <exception cref="InvalidOperationException">A <c>[Cycle]</c> method has parameters or another return type.</exception>
+    /// <exception cref="InvalidOperationException">A <c>[Cycle]</c> method has parameters, another return type, or is async void.</exception>
     public List<MethodInfo> RegisterMethods(IServiceProvider serviceProvider)
     {
         // 1. Collect all methods annotated with CycleAttribute
@@ -292,6 +293,12 @@ public class MethodScheduler
             var del = (Func<Task>)Delegate.CreateDelegate(typeof(Func<Task>), target, method);
             return del;
         }
+
+        // An async void method returns before it finishes and its exceptions go to the thread pool, which ends the
+        // process: the engine can neither await it nor report its failure.
+        if (method.ReturnType == typeof(void) && method.GetCustomAttribute<AsyncStateMachineAttribute>() != null)
+            throw new InvalidOperationException(
+                $"[Cycle] {method.DeclaringType!.FullName}.{method.Name} is async void; declare it 'async Task' so the engine awaits it and reports its failures.");
 
         if (method.ReturnType == typeof(void) && method.GetParameters().Length == 0)
         {
@@ -474,7 +481,7 @@ public class EngineWithDiagnostics : IAltruistEngine
         _logger = loggerFactory.CreateLogger<EngineWithDiagnostics>();
         var unit = _wrappedEngine.Rate.Unit;
 
-        if (unit == CycleUnit.Seconds)
+        if (unit == CycleUnit.Seconds || unit == CycleUnit.IntervalSeconds)
         {
             // Value = ticks per cycle => Hz = ticks per second / ticks per cycle
             _engineFrequencyHz = (double)TimeSpan.TicksPerSecond / _wrappedEngine.Rate.Value;

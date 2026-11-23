@@ -167,7 +167,7 @@ namespace Altruist.Gaming.TwoD
         /// <inheritdoc/>
         public IWorldIndex2D Index => _index;
         /// <inheritdoc/>
-        public IZoneManager2D Zones => _zoneManager ??= new ZoneManager2D(_worldPartitioner, _partitions);
+        public IZoneManager2D Zones => _zoneManager ??= new ZoneManager2D(_partitions);
 
         /// <inheritdoc/>
         public void Initialize()

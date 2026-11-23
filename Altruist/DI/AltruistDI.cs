@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 using Altruist.Contracts;
 
@@ -40,7 +41,9 @@ public static class AltruistDI
     /// <summary>The process-wide service collection all bootstrap steps register into. Add manual registrations here before calling <see cref="Run"/>.</summary>
     public static readonly IServiceCollection Services = new ServiceCollection();
 
-    private static readonly HashSet<string> _constructionCache = new();
+    // Keyed by instance, not by type: every provider built in the process (a test class container, then the live
+    // server) has its own singletons, and each of them needs its hook. Weak keys let disposed providers' instances go.
+    private static readonly ConditionalWeakTable<object, object> _constructedInstances = new();
 
     /// <summary>
     /// Boots the DI container: loads configuration (<see cref="AppConfigLoader.Load"/>), loads all referenced assemblies,
@@ -194,8 +197,8 @@ public static class AltruistDI
 
     /// <summary>
     /// Resolves every distinct service type in <paramref name="services"/> from <paramref name="provider"/> (which eagerly
-    /// creates singletons) and invokes its <see cref="PostConstructAttribute"/> method, once per implementation type per
-    /// process. Resolution failures (a dependency cycle among them) are written to stderr and skipped, not thrown; an
+    /// creates singletons) and invokes its <see cref="PostConstructAttribute"/> method, once per instance (an instance
+    /// registered under several service types, or processed again, runs it once; another provider's instances run their own). Resolution failures (a dependency cycle among them) are written to stderr and skipped, not thrown; an
     /// exception thrown by a hook propagates.
     /// </summary>
     /// <param name="provider">The built root provider.</param>
@@ -211,6 +214,11 @@ public static class AltruistDI
         {
             var serviceType = descriptor.ServiceType;
             if (serviceType is null)
+                continue;
+
+            // An open generic registration (IOptions<>, ILogger<>) is a template for closed types, never a service
+            // that can be resolved itself.
+            if (serviceType.ContainsGenericParameters)
                 continue;
 
             if (!processedServiceTypes.Add(serviceType))
@@ -232,15 +240,28 @@ public static class AltruistDI
             if (instance is null)
                 continue;
 
-            var implType = instance.GetType();
-            if (!_constructionCache.Add(implType.FullName!))
+            if (!MarkConstructed(instance))
                 continue;
+
+            var implType = instance.GetType();
 
             if (!HasPostConstruct(implType))
                 continue;
 
             var log = loggerFactory.CreateLogger(implType);
             await DependencyResolver.InvokePostConstructAsync(instance, provider, cfg, log);
+        }
+    }
+
+    // ConditionalWeakTable.TryAdd is missing on netstandard2.1, so check-and-add under a lock.
+    private static bool MarkConstructed(object instance)
+    {
+        lock (_constructedInstances)
+        {
+            if (_constructedInstances.TryGetValue(instance, out _))
+                return false;
+            _constructedInstances.Add(instance, instance);
+            return true;
         }
     }
 

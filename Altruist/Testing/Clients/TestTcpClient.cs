@@ -4,6 +4,7 @@ Licensed under the Apache License, Version 2.0
 */
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 
@@ -39,8 +40,13 @@ public sealed class TestTcpClient : IAsyncDisposable, IDisposable
 {
     private readonly string _host;
     private readonly int _port;
+    /// <summary>Largest frame the server sends (its own receive limit).</summary>
+    private const int MaxFrameBytes = 16 * 1024 * 1024;
+
     private readonly TcpClient _tcp = new();
+    private readonly ConcurrentQueue<byte[]> _received = new();
     private NetworkStream? _stream;
+    private Task? _reading;
 
     /// <summary>Codec selected from <c>config.yml</c>'s
     /// <c>transport:tcp:codec:provider</c> (or global <c>transport:codec:provider</c>).
@@ -84,6 +90,42 @@ public sealed class TestTcpClient : IAsyncDisposable, IDisposable
         var clientIdBuf = new byte[clientIdLen];
         await _stream.ReadExactlyAsync(clientIdBuf, ct);
         ClientId = Encoding.UTF8.GetString(clientIdBuf);
+        _reading = ReadFramesAsync(_stream);
+    }
+
+    /// <summary>
+    /// Reads every frame as it arrives, as a game client does. A client that reads only while a test drains
+    /// stops reading in between; the server then sees a client whose sends are stuck and drops it.
+    /// Ends when the connection closes, is reset, or sends a length no frame can have.
+    /// </summary>
+    private async Task ReadFramesAsync(NetworkStream stream)
+    {
+        var lenBuf = new byte[4];
+        try
+        {
+            while (true)
+            {
+                await stream.ReadExactlyAsync(lenBuf);
+                int len = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
+                if (len <= 0 || len > MaxFrameBytes)
+                    return;
+                var data = new byte[len];
+                await stream.ReadExactlyAsync(data);
+                _received.Enqueue(data);
+            }
+        }
+        catch (EndOfStreamException)
+        {
+            // The server closed the connection.
+        }
+        catch (IOException)
+        {
+            // The connection was reset.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed by the test.
+        }
     }
 
     /// <summary>Frame an Altruist packet (event name + codec-encoded payload) and
@@ -111,49 +153,39 @@ public sealed class TestTcpClient : IAsyncDisposable, IDisposable
         await stream.FlushAsync(ct);
     }
 
-    /// <summary>Read all frames the server sends within <paramref name="timeout"/>.
+    /// <summary>Wait <paramref name="timeout"/>, then take every frame received since the last drain.
     /// Returns the raw bodies (codec-encoded — caller decodes with
     /// <see cref="Codec"/> or <see cref="TryParseSyncPacket"/>). Not connected: an empty list.
-    /// A frame longer than 64 KiB stops the drain, and a closed or failed socket ends it early;
-    /// a frame cut off by the timeout is lost.</summary>
-    /// <param name="timeout">How long to keep reading.</param>
+    /// A closed connection ends the wait early. Frames are read continuously from connect on, so the
+    /// server never sees the client stop reading between drains.</summary>
+    /// <param name="timeout">How long to keep collecting.</param>
     public async Task<List<byte[]>> DrainAsync(TimeSpan timeout)
     {
-        var packets = new List<byte[]>();
-        var stream = _stream;
-        if (stream is null) return packets;
-
-        var lenBuf = new byte[4];
-        using var cts = new CancellationTokenSource(timeout);
-        try
-        {
-            while (!cts.Token.IsCancellationRequested)
-            {
-                int headerRead = 0;
-                while (headerRead < 4)
-                {
-                    int n = await stream.ReadAsync(lenBuf.AsMemory(headerRead, 4 - headerRead), cts.Token);
-                    if (n == 0) return packets;
-                    headerRead += n;
-                }
-
-                int len = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
-                if (len <= 0 || len > 65536) break;
-
-                var data = new byte[len];
-                int payloadRead = 0;
-                while (payloadRead < len)
-                {
-                    int n = await stream.ReadAsync(data.AsMemory(payloadRead, len - payloadRead), cts.Token);
-                    if (n == 0) return packets;
-                    payloadRead += n;
-                }
-                packets.Add(data);
-            }
-        }
-        catch (OperationCanceledException) { /* timeout — return what we have */ }
-        catch { /* dead socket — return what we have */ }
+        if (_reading is null) return new List<byte[]>();
+        await Task.WhenAny(_reading, Task.Delay(timeout));
+        var packets = new List<byte[]>(_received.Count);
+        while (_received.TryDequeue(out var data))
+            packets.Add(data);
         return packets;
+    }
+
+    /// <summary>Wait until a frame has arrived that no drain has taken yet.</summary>
+    /// <param name="timeout">How long the server may take to send it.</param>
+    /// <exception cref="InvalidOperationException">Not connected.</exception>
+    /// <exception cref="TimeoutException">No frame arrived within <paramref name="timeout"/>, or the connection closed first.</exception>
+    public async Task WaitForFrameAsync(TimeSpan timeout)
+    {
+        var reading = _reading ?? throw new InvalidOperationException(
+            "TestTcpClient not connected. Call ConnectAsync first.");
+        var deadline = DateTime.UtcNow + timeout;
+        while (_received.IsEmpty)
+        {
+            if (reading.IsCompleted)
+                throw new TimeoutException("The connection closed before the server sent a frame.");
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException($"The server sent no frame within {timeout}.");
+            await Task.Delay(10);
+        }
     }
 
     /// <summary>Try to deserialize a raw frame body as a <c>SyncPacket</c>

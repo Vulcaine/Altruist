@@ -256,6 +256,26 @@ public sealed class EngineCronJobTests
         Assert.Equal(before + 1, Volatile.Read(ref StaticCycleService.Runs));
     }
 
+    public sealed class AsyncVoidCycleService
+    {
+        [Cycle(1)]
+        public async void Tick() => await Task.Yield();
+    }
+
+    [Fact]
+    public void An_async_void_cycle_method_is_refused_at_registration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<AsyncVoidCycleService>();
+        using var provider = services.BuildServiceProvider();
+
+        // Scheduled, its first throw would reach the thread pool and end the process.
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new MethodScheduler(new Mock<IEngineCore>().Object, provider).RegisterMethods(provider));
+        Assert.Contains("async void", ex.Message);
+        Assert.Contains(nameof(AsyncVoidCycleService.Tick), ex.Message);
+    }
+
     private static int _ticks;
     private static void CountTick() => Interlocked.Increment(ref _ticks);
     private static void Explode() => throw new InvalidOperationException("tick boom");

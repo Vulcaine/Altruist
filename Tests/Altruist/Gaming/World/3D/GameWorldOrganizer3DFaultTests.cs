@@ -1,4 +1,5 @@
 using System.Numerics;
+using Altruist.Engine;
 using Altruist.Gaming;
 using Altruist.Gaming.ThreeD;
 using Altruist.Numerics;
@@ -27,12 +28,12 @@ public sealed class GameWorldOrganizer3DFaultTests
         index.SetupGet(i => i.Index).Returns(0);
         index.SetupGet(i => i.Name).Returns("test");
         index.SetupProperty(i => i.Size, new IntVector3(64, 64, 64));
-        var world = new GameWorldManager3D(index.Object, physx3D: null, new WorldPartitioner3D(64, 64, 64));
+        var world = new GameWorldManager3D(index.Object, physx3D: null, new WorldPartitioner3D(64, 64, 64), new VirtualIdAllocator());
         world.Initialize();
         var loader = new Mock<IWorldLoader3D>();
         loader.Setup(l => l.LoadFromIndex(It.IsAny<IWorldIndex3D>())).ReturnsAsync(world);
         var logs = new Tests.Gaming.CapturingLoggerFactory();
-        var organizer = new GameWorldOrganizer3D(loader.Object, [index.Object], loggerFactory: logs);
+        var organizer = new GameWorldOrganizer3D(loader.Object, [index.Object], new EngineFrameCounter(), loggerFactory: logs);
         var a = new ThrowingObject3D();
         var b = new ThrowingObject3D();
         await world.SpawnObject(a);

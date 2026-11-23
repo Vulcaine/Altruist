@@ -16,7 +16,7 @@ namespace Altruist
     /// must return <c>void</c>, <see cref="System.Threading.Tasks.Task"/> or <see cref="System.Threading.Tasks.ValueTask"/>
     /// (async methods are awaited before startup continues). Violations throw at startup.</para>
     /// <para>Timing: <see cref="AltruistDI.RunPostConstructsAsync"/> resolves every registered (unkeyed) service type from the
-    /// root provider at startup (which also makes singletons eager) and invokes the hook once per implementation type.
+    /// root provider at startup (which also makes singletons eager) and invokes the hook once per resolved instance.
     /// Instances created later (transient or scoped services resolved after startup) do NOT get the hook called; do that
     /// work in the constructor instead. Use this for initialization that needs the fully built container, async I/O,
     /// or must not run in the constructor.</para>

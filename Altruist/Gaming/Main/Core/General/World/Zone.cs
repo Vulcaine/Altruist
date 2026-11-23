@@ -9,8 +9,8 @@ namespace Altruist.Gaming
 {
     /// <summary>
     /// A named spatial region within a world.
-    /// Zones must fit entirely inside a single partition.
-    /// Multiple zones can exist within the same partition.
+    /// Zones must lie inside the world; a zone may span several partitions,
+    /// and several zones can share a partition.
     /// </summary>
     /// <remarks>These are static spatial regions. For regions whose spawns materialise and despawn with player
     /// presence, see <see cref="IManagedZone"/> / <see cref="IZoneManager"/>.</remarks>
@@ -96,14 +96,14 @@ namespace Altruist.Gaming
 
     /// <summary>
     /// Manages spatial zones within a world.
-    /// Zones are validated against partition boundaries — a zone cannot
-    /// be larger than a partition and must fit entirely inside one.
+    /// Zones are validated against the world bounds — a zone must lie
+    /// entirely inside the world and may span several partitions.
     /// </summary>
     public interface IZoneManager<TZone> where TZone : IZone
     {
         /// <summary>
-        /// Register a zone. Throws if the zone exceeds partition size
-        /// or does not fit entirely within a single partition.
+        /// Register a zone. Throws if its name is empty or taken, a size is not
+        /// positive, or it reaches outside the world.
         /// </summary>
         TZone RegisterZone(TZone zone);
 
@@ -143,8 +143,8 @@ namespace Altruist.Gaming
             int maxX, int maxY, int maxZ);
     }
 
-    /// <summary>Thrown by <see cref="IZoneManager{TZone}.RegisterZone"/> when a zone is larger than a partition
-    /// or does not fit inside one.</summary>
+    /// <summary>Thrown by <see cref="IZoneManager{TZone}.RegisterZone"/> when a zone's name is empty or taken, a size
+    /// is not positive, or the zone reaches outside the world.</summary>
     public class ZoneValidationException : Exception
     {
         /// <summary>Creates the exception.</summary>

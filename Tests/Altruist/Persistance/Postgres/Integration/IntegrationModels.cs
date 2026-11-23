@@ -57,3 +57,10 @@ public sealed class ItTextRow
 {
     public string Value { get; set; } = "";
 }
+
+/// <summary>A vault whose table the migrator meets without a primary key (created by hand or by an older tool).</summary>
+[Vault("it_missing_pk", Keyspace: PostgresDatabaseFixture.Schema)]
+public sealed class ItMissingPrimaryKey : VaultModel
+{
+    [VaultColumn("name")] public string Name { get; set; } = "";
+}

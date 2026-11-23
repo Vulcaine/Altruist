@@ -416,6 +416,9 @@ public sealed class CachedTcpConnection : AltruistConnection
     {
         return _connection?.CloseAsync() ?? Task.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public override void Abort() => _connection?.Abort();
 }
 
 /// <summary>
@@ -558,6 +561,19 @@ public sealed class TcpConnection : AltruistConnection
         try { _networkStream.Close(); } catch { }
         try { _client.Close(); } catch { }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resets the connection at once (zero linger: the peer gets RST, unsent data is dropped), which fails the
+    /// pending send and the read loop's receive, so the normal disconnect path runs. A connection that is
+    /// already closed is left as it is.
+    /// </summary>
+    public override void Abort()
+    {
+        // The socket itself, not the TcpClient: closing the client disposes the NetworkStream first, which
+        // shuts the socket down gracefully (FIN) and leaves the unsent data waiting on a peer that never reads.
+        // TcpClient.Client is null once the client is closed, and Socket.Close is a no-op on a disposed socket.
+        _client.Client?.Close(0);
     }
 }
 
