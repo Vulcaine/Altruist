@@ -17,7 +17,7 @@ public class ZoneManager2DTests
         var partitioner = new TestPartitioner2D(partitionWidth, partitionHeight);
         var worldIndex = new TestWorldIndex2D(worldWidth, worldHeight);
         var partitions = partitioner.CalculatePartitions(worldIndex);
-        return new ZoneManager2D(partitioner, partitions);
+        return new ZoneManager2D(partitions);
     }
 
     [Fact]
@@ -33,22 +33,42 @@ public class ZoneManager2DTests
     }
 
     [Fact]
-    public void RegisterZone_ShouldThrow_WhenZoneExceedsPartitionSize()
+    public void A_zone_larger_than_a_partition_registers()
     {
         var manager = CreateManager(partitionWidth: 64, partitionHeight: 64);
-        var zone = new Zone2D("huge", new IntVector2(0, 0), new IntVector2(128, 128));
 
-        Assert.Throws<ZoneValidationException>(() => manager.RegisterZone(zone));
+        var zone = manager.RegisterZone(new Zone2D("huge", new IntVector2(0, 0), new IntVector2(128, 128)));
+
+        Assert.Same(zone, manager.FindZoneAt(100, 100));
     }
 
     [Fact]
-    public void RegisterZone_ShouldThrow_WhenZoneCrossesPartitionBoundary()
+    public void A_zone_crossing_a_partition_boundary_registers()
     {
         var manager = CreateManager(partitionWidth: 256, partitionHeight: 256);
-        // Zone starts at (200, 200) with size (100, 100) — crosses into next partition at 256
-        var zone = new Zone2D("crossing", new IntVector2(200, 200), new IntVector2(100, 100));
 
-        Assert.Throws<ZoneValidationException>(() => manager.RegisterZone(zone));
+        var zone = manager.RegisterZone(new Zone2D("crossing", new IntVector2(200, 200), new IntVector2(100, 100)));
+
+        Assert.Same(zone, manager.FindZoneAt(210, 210));
+        Assert.Same(zone, manager.FindZoneAt(290, 290));
+    }
+
+    [Fact]
+    public void A_zone_reaching_outside_the_world_is_rejected()
+    {
+        var manager = CreateManager(worldWidth: 1024, worldHeight: 1024);
+
+        Assert.Throws<ZoneValidationException>(() =>
+            manager.RegisterZone(new Zone2D("edge", new IntVector2(1000, 0), new IntVector2(100, 100))));
+    }
+
+    [Fact]
+    public void A_zone_without_area_is_rejected()
+    {
+        var manager = CreateManager();
+
+        Assert.Throws<ZoneValidationException>(() =>
+            manager.RegisterZone(new Zone2D("flat", new IntVector2(0, 0), new IntVector2(0, 100))));
     }
 
     [Fact]
@@ -199,14 +219,19 @@ public class ZoneManager2DTests
 
 public class ZoneManager3DTests
 {
+    /// <summary>A world of 2 x 1 x 2 partitions of the given size.</summary>
     private ZoneManager3D CreateManager(int pw = 256, int ph = 256, int pd = 256)
     {
-        var partitions = new List<WorldPartitionManager3D>
+        var partitions = new List<WorldPartitionManager3D>();
+        for (int x = 0; x < 2; x++)
         {
-            new(index: new IntVector3(0, 0, 0), position: new IntVector3(0, 0, 0), size: new IntVector3(pw, ph, pd))
-        };
-        var partitioner = new TestPartitioner3D(pw, ph, pd);
-        return new ZoneManager3D(partitioner, partitions);
+            for (int z = 0; z < 2; z++)
+            {
+                partitions.Add(new(index: new IntVector3(x, 0, z), position: new IntVector3(x * pw, 0, z * pd),
+                    size: new IntVector3(pw, ph, pd)));
+            }
+        }
+        return new ZoneManager3D(partitions);
     }
 
     [Fact]
@@ -221,12 +246,43 @@ public class ZoneManager3DTests
     }
 
     [Fact]
-    public void RegisterZone_ShouldThrow_WhenZoneExceedsPartitionSize()
+    public void A_zone_crossing_a_partition_boundary_registers()
+    {
+        var manager = CreateManager();
+
+        // Placed like a map in an atlas: straddles the x and z partition borders at 256.
+        var zone = manager.RegisterZone(new Zone3D("deviltower", new IntVector3(200, 0, 200), new IntVector3(100, 100, 100)));
+
+        Assert.Same(zone, manager.FindZoneAt(210, 10, 210));
+        Assert.Same(zone, manager.FindZoneAt(290, 10, 290));
+    }
+
+    [Fact]
+    public void A_zone_larger_than_a_partition_registers()
     {
         var manager = CreateManager(pw: 64, ph: 64, pd: 64);
-        var zone = new Zone3D("huge", new IntVector3(0, 0, 0), new IntVector3(128, 128, 128));
 
-        Assert.Throws<ZoneValidationException>(() => manager.RegisterZone(zone));
+        var zone = manager.RegisterZone(new Zone3D("huge", new IntVector3(0, 0, 0), new IntVector3(128, 64, 128)));
+
+        Assert.Same(zone, manager.FindZoneAt(100, 10, 100));
+    }
+
+    [Fact]
+    public void A_zone_reaching_outside_the_world_is_rejected()
+    {
+        var manager = CreateManager();
+
+        Assert.Throws<ZoneValidationException>(() =>
+            manager.RegisterZone(new Zone3D("edge", new IntVector3(450, 0, 0), new IntVector3(100, 100, 100))));
+    }
+
+    [Fact]
+    public void A_zone_without_volume_is_rejected()
+    {
+        var manager = CreateManager();
+
+        Assert.Throws<ZoneValidationException>(() =>
+            manager.RegisterZone(new Zone3D("flat", new IntVector3(0, 0, 0), new IntVector3(100, 0, 100))));
     }
 
     [Fact]
@@ -249,22 +305,5 @@ public class ZoneManager3DTests
 
         var found = manager.FindZonesInBounds(0, 0, 0, 200, 200, 200);
         Assert.Equal(2, found.Count());
-    }
-
-    private class TestPartitioner3D : IWorldPartitioner3D
-    {
-        public int PartitionWidth { get; }
-        public int PartitionHeight { get; }
-        public int PartitionDepth { get; }
-
-        public TestPartitioner3D(int w, int h, int d)
-        {
-            PartitionWidth = w;
-            PartitionHeight = h;
-            PartitionDepth = d;
-        }
-
-        public List<WorldPartitionManager3D> CalculatePartitions(IWorldIndex3D world)
-            => throw new NotImplementedException(); // Not used in tests
     }
 }

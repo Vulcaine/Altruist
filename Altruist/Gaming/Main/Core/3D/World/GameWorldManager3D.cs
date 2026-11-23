@@ -337,7 +337,7 @@ namespace Altruist.Gaming.ThreeD
         /// <inheritdoc/>
         public IWorldIndex3D Index => _index;
         /// <inheritdoc/>
-        public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_worldPartitioner, _partitions);
+        public IZoneManager3D Zones => _zoneManager ??= new ZoneManager3D(_partitions);
 
         /// <summary>
         /// Computes the partition grid from <see cref="Index"/> and registers the partitions. Called by the constructor;
