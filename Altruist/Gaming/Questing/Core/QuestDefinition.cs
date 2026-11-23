@@ -193,7 +193,8 @@ public sealed class QuestDefinition<TContext> where TContext : QuestContext
             if (method == null)
                 continue;
 
-            handlers[hook.Key] = ctx => (Task)method.Invoke(instance, [ctx])!;
+            // DoNotWrapExceptions: the handler's own exception reaches the caller, not a TargetInvocationException.
+            handlers[hook.Key] = ctx => (Task)method.Invoke(instance, BindingFlags.DoNotWrapExceptions, null, [ctx], null)!;
         }
 
         return handlers;

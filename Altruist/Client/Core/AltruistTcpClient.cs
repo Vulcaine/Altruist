@@ -146,12 +146,12 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         _stream = _tcp.GetStream();
 
         var lenBuf = new byte[4];
-        await ReadExactAsync(_stream, lenBuf, 4, ct).ConfigureAwait(false);
+        await ReadExactAsync(_stream, lenBuf, ct).ConfigureAwait(false);
         var clientIdLen = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
         if (clientIdLen <= 0 || clientIdLen > 1024)
             throw new InvalidOperationException($"Invalid handshake clientId length: {clientIdLen}");
         var clientIdBuf = new byte[clientIdLen];
-        await ReadExactAsync(_stream, clientIdBuf, clientIdLen, ct).ConfigureAwait(false);
+        await ReadExactAsync(_stream, clientIdBuf, ct).ConfigureAwait(false);
         ClientId = Encoding.UTF8.GetString(clientIdBuf);
 
         OnConnected?.Invoke();
@@ -255,12 +255,17 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         {
             while (!cts.IsCancellationRequested)
             {
-                await ReadExactAsync(stream, lenBuf, 4, cts.Token).ConfigureAwait(false);
+                // The timeout may only end the wait for the next frame's first byte. Cancelling once a frame
+                // has started drops the bytes already read and misaligns the stream, so every later read
+                // takes payload bytes for a length prefix.
+                int first = await stream.ReadAsync(lenBuf.AsMemory(0, 1), cts.Token).ConfigureAwait(false);
+                if (first == 0) break;
+                await ReadExactAsync(stream, lenBuf.AsMemory(1), CancellationToken.None).ConfigureAwait(false);
                 int len = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
                 if (len <= 0 || len > 16 * 1024 * 1024) break;
 
                 var data = new byte[len];
-                await ReadExactAsync(stream, data, len, cts.Token).ConfigureAwait(false);
+                await ReadExactAsync(stream, data, CancellationToken.None).ConfigureAwait(false);
                 packets.Add(data);
             }
         }
@@ -282,16 +287,12 @@ internal sealed class AltruistTcpClient : IAsyncDisposable, IDisposable
         return read;
     }
 
-    private static async Task ReadExactAsync(NetworkStream stream, byte[] buffer, int count, CancellationToken ct)
+    private static async Task ReadExactAsync(NetworkStream stream, Memory<byte> buffer, CancellationToken ct)
     {
         int read = 0;
-        while (read < count)
+        while (read < buffer.Length)
         {
-#if NETSTANDARD2_1
-            int n = await stream.ReadAsync(buffer.AsMemory(read, count - read), ct).ConfigureAwait(false);
-#else
-            int n = await stream.ReadAsync(buffer.AsMemory(read, count - read), ct).ConfigureAwait(false);
-#endif
+            int n = await stream.ReadAsync(buffer.Slice(read), ct).ConfigureAwait(false);
             if (n == 0) throw new EndOfStreamException("Stream closed mid-read");
             read += n;
         }

@@ -60,6 +60,11 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     // hence "no starter inventory" symptom in parallel E2E tests).
     private readonly ConcurrentDictionary<string, Dictionary<string, QuestState>> _states = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _lastUpdateFingerprints = new(StringComparer.Ordinal);
+    // A subject's events run one at a time: its state map is a plain Dictionary that
+    // handlers mutate, and each save reads the stored versions before writing. Games
+    // raise events without awaiting each other (several mobs dying in one sweep), and
+    // two overlapping fires for one subject failed the save with a version mismatch.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _subjectGates = new(StringComparer.Ordinal);
     private List<QuestDefinition<TContext>> _quests = new();
     private Dictionary<string, List<QuestDefinition<TContext>>> _npcBindings = new(StringComparer.OrdinalIgnoreCase);
 
@@ -187,7 +192,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <param name="targetId">Event target id (victim, NPC, item...), exposed as <see cref="QuestContext.TargetId"/>.</param>
     /// <param name="value">Event value, exposed as <see cref="QuestContext.Value"/>.</param>
     /// <param name="npcKey">NPC key for <see cref="QuestTrigger.Npc"/> routing; ignored for other triggers.</param>
-    public async Task FireAsync(TContext baseContext, QuestTrigger trigger, long targetId = 0, int value = 0, string? npcKey = null)
+    public Task FireAsync(TContext baseContext, QuestTrigger trigger, long targetId = 0, int value = 0, string? npcKey = null) =>
+        RunForSubjectAsync(baseContext.SubjectId, () => FireCoreAsync(baseContext, trigger, targetId, value, npcKey));
+
+    private async Task FireCoreAsync(TContext baseContext, QuestTrigger trigger, long targetId, int value, string? npcKey)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
         string hookKey = QuestDefinition<TContext>.QuestTriggerToHookKey(trigger);
@@ -246,7 +254,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <param name="hookKey">Hook key (case-insensitive for handler lookup).</param>
     /// <param name="targetId">Event target id.</param>
     /// <param name="value">Event value.</param>
-    public async Task FireHookAsync(TContext baseContext, string hookKey, long targetId = 0, int value = 0)
+    public Task FireHookAsync(TContext baseContext, string hookKey, long targetId = 0, int value = 0) =>
+        RunForSubjectAsync(baseContext.SubjectId, () => FireHookCoreAsync(baseContext, hookKey, targetId, value));
+
+    private async Task FireHookCoreAsync(TContext baseContext, string hookKey, long targetId, int value)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
 
@@ -268,13 +279,23 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <param name="targetId">Event target id.</param>
     /// <param name="value">Event value.</param>
     /// <returns>False when no quest has that id.</returns>
-    public async Task<bool> FireQuestHookAsync(
+    public Task<bool> FireQuestHookAsync(
         TContext baseContext,
         string questId,
         string hookKey,
         QuestTrigger trigger = QuestTrigger.Custom,
         long targetId = 0,
-        int value = 0)
+        int value = 0) =>
+        RunForSubjectAsync(baseContext.SubjectId,
+            () => FireQuestHookCoreAsync(baseContext, questId, hookKey, trigger, targetId, value));
+
+    private async Task<bool> FireQuestHookCoreAsync(
+        TContext baseContext,
+        string questId,
+        string hookKey,
+        QuestTrigger trigger,
+        long targetId,
+        int value)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
 
@@ -308,7 +329,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <param name="baseContext">Subject data.</param>
     /// <param name="previousLevel">Level before the change (only used to detect level loss).</param>
     /// <param name="currentLevel">New level (clamped to at least 1).</param>
-    public async Task ReconcileLevelAsync(TContext baseContext, int previousLevel, int currentLevel)
+    public Task ReconcileLevelAsync(TContext baseContext, int previousLevel, int currentLevel) =>
+        RunForSubjectAsync(baseContext.SubjectId, () => ReconcileLevelCoreAsync(baseContext, previousLevel, currentLevel));
+
+    private async Task ReconcileLevelCoreAsync(TContext baseContext, int previousLevel, int currentLevel)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
         int targetLevel = Math.Max(1, currentLevel);
@@ -365,7 +389,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
 
     /// <summary>Drops the subject's cached state and publish fingerprints and calls <see cref="IQuestStateStore.ResetAsync"/>, restarting all of its quests.</summary>
     /// <param name="subjectId">The subject id.</param>
-    public async Task ResetAsync(string subjectId)
+    public Task ResetAsync(string subjectId) =>
+        RunForSubjectAsync(subjectId, () => ResetCoreAsync(subjectId));
+
+    private async Task ResetCoreAsync(string subjectId)
     {
         _states.TryRemove(subjectId, out _);
         foreach (var key in _lastUpdateFingerprints.Keys.Where(k => k.StartsWith(subjectId + ":", StringComparison.Ordinal)).ToArray())
@@ -380,7 +407,10 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// </summary>
     /// <param name="baseContext">Subject data.</param>
     /// <returns>One update per registered quest, in quest order.</returns>
-    public async Task<IReadOnlyList<QuestUpdate>> BuildUpdatesAsync(TContext baseContext)
+    public Task<IReadOnlyList<QuestUpdate>> BuildUpdatesAsync(TContext baseContext) =>
+        RunForSubjectAsync(baseContext.SubjectId, () => BuildUpdatesCoreAsync(baseContext));
+
+    private async Task<IReadOnlyList<QuestUpdate>> BuildUpdatesCoreAsync(TContext baseContext)
     {
         await EnsureStatesLoadedAsync(baseContext.SubjectId);
         var updates = new List<QuestUpdate>();
@@ -398,10 +428,32 @@ public sealed class QuestRuntime<TContext> where TContext : QuestContext
     /// <param name="subjectId">The subject id.</param>
     /// <param name="questId">The quest id.</param>
     /// <returns>The quest state.</returns>
-    public async Task<QuestState> GetStateAsync(string subjectId, string questId)
+    public Task<QuestState> GetStateAsync(string subjectId, string questId) =>
+        RunForSubjectAsync(subjectId, async () =>
+        {
+            await EnsureStatesLoadedAsync(subjectId);
+            return GetState(subjectId, questId);
+        });
+
+    private Task RunForSubjectAsync(string subjectId, Func<Task> work) =>
+        RunForSubjectAsync(subjectId, async () =>
+        {
+            await work();
+            return true;
+        });
+
+    private async Task<T> RunForSubjectAsync<T>(string subjectId, Func<Task<T>> work)
     {
-        await EnsureStatesLoadedAsync(subjectId);
-        return GetState(subjectId, questId);
+        var gate = _subjectGates.GetOrAdd(subjectId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await work();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private async Task DispatchOneAsync(
