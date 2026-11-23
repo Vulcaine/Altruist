@@ -1,5 +1,5 @@
 {
-  "version": "0.10.0-beta",
+  "version": "0.10.1-beta",
   "capabilities": [
     {
       "spec": {
@@ -1398,7 +1398,7 @@
           "key": "altruist:server:transport:tcp:host",
           "origin": "literal",
           "live": false,
-          "file": "Altruist/Testing/Clients/TestTcpClient.cs:61",
+          "file": "Altruist/Testing/Clients/TestTcpClient.cs:67",
           "gates": []
         },
         {
@@ -4855,6 +4855,18 @@
           ]
         },
         {
+          "type": "Altruist.Engine.EngineFrameCounter",
+          "kind": "service",
+          "contracts": [
+            "Altruist.Engine.IEngineFrameCounter"
+          ],
+          "summary": "The frame counter the engine advances at the start of each frame.",
+          "file": "Altruist/Gaming/Main/Core/General/Engine/EngineFrameCounter.cs",
+          "gates": [
+            "altruist:game is set"
+          ]
+        },
+        {
           "type": "Altruist.Engine.EngineWithDiagnostics",
           "kind": "service",
           "contracts": [
@@ -5154,7 +5166,7 @@
           "contracts": [
             "Altruist.IClientSynchronizator"
           ],
-          "summary": "The gaming module's `IClientSynchronizator` (used through `Synchronize`): computes the changed `[Synced]` properties of an `ISynchronizedEntity` for the current engine tick (`CurrentTick`) and broadcasts them as one `SyncPacket` to every connected client. Registered as a singleton when `altruist:game` is configured, replacing the core placeholder that throws. When to use: simple delta sync of a few shared entities to everyone. It is not interest-managed: for per-client visibility in persistent worlds use the spatial broadcast / visibility services of the world organizers, and for authoritative match rooms send the game's own snapshots through `RoomHost` (Altruist.Gaming.Rooms).",
+          "summary": "The gaming module's `IClientSynchronizator` (used through `Synchronize`): computes the changed `[Synced]` properties of an `ISynchronizedEntity` for the current engine frame (`IEngineFrameCounter`) and broadcasts them as one `SyncPacket` to every connected client. Registered as a singleton when `altruist:game` is configured, replacing the core placeholder that throws. When to use: simple delta sync of a few shared entities to everyone. It is not interest-managed: for per-client visibility in persistent worlds use the spatial broadcast / visibility services of the world organizers, and for authoritative match rooms send the game's own snapshots through `RoomHost` (Altruist.Gaming.Rooms).",
           "file": "Altruist/Gaming/Main/Core/Router.cs",
           "gates": [
             "altruist:game is set"
@@ -6319,7 +6331,7 @@
       "keyTypes": [
         {
           "type": "Altruist.Gaming.IZone",
-          "summary": "A named spatial region within a world. Zones must fit entirely inside a single partition. Multiple zones can exist within the same partition.",
+          "summary": "A named spatial region within a world. Zones must lie inside the world; a zone may span several partitions, and several zones can share a partition.",
           "file": "Altruist/Gaming/Main/Core/General/World/Zone.cs"
         },
         {
@@ -6344,7 +6356,7 @@
         },
         {
           "type": "Altruist.Gaming.ZoneValidationException",
-          "summary": "Thrown by `RegisterZone` when a zone is larger than a partition or does not fit inside one.",
+          "summary": "Thrown by `RegisterZone` when a zone's name is empty or taken, a size is not positive, or the zone reaches outside the world.",
           "file": "Altruist/Gaming/Main/Core/General/World/Zone.cs"
         }
       ],
@@ -6868,7 +6880,7 @@
       "keyTypes": [
         {
           "type": "Altruist.Gaming.ILagCompensationService",
-          "summary": "Server-side lag compensation service. Records entity position history each tick and provides temporal rewind so any module can validate actions against where entities were at the client's perceived time. Usage — any module can wrap its logic in RewindWorld: _lagCompensation.RewindWorld(clientTick, () => { // All Compensate() calls inside here return historical positions var (x, y, z) = _lagCompensation.Compensate(entity.VirtualId, entity.X, entity.Y, entity.Z); }); Enable: set altruist:game:lag-compensation = true Configure: altruist:game:lag-compensation:history-ticks (default 64) altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest) Ticks are engine frames (`AltruistEngine.CurrentTick`); history is recorded by the 3D world organizer after each world step, keyed by the 3D world object's `VirtualId`. Not thread-safe: rewind and record on the engine/world thread. The service is optional (registered only when the config key exists): inject it nullable and use `RewindOrRun`, which simply runs the action when compensation is off. Choosing: use this for server-authoritative hit validation in persistent 3D worlds (melee sweeps, hitscan) against what the client saw. Deterministic room simulations with client prediction usually don't need it (inputs are applied at their own step instead).",
+          "summary": "Server-side lag compensation service. Records entity position history each tick and provides temporal rewind so any module can validate actions against where entities were at the client's perceived time. Usage — any module can wrap its logic in RewindWorld: _lagCompensation.RewindWorld(clientTick, () => { // All Compensate() calls inside here return historical positions var (x, y, z) = _lagCompensation.Compensate(entity.VirtualId, entity.X, entity.Y, entity.Z); }); Enable: set altruist:game:lag-compensation = true Configure: altruist:game:lag-compensation:history-ticks (default 64) altruist:game:lag-compensation:snapshot-strategy = nearest | interpolate (default nearest) Ticks are engine frames (`Frame`); history is recorded by the 3D world organizer after each world step, keyed by the 3D world object's `VirtualId`. Not thread-safe: rewind and record on the engine/world thread. The service is optional (registered only when the config key exists): inject it nullable and use `RewindOrRun`, which simply runs the action when compensation is off. Choosing: use this for server-authoritative hit validation in persistent 3D worlds (melee sweeps, hitscan) against what the client saw. Deterministic room simulations with client prediction usually don't need it (inputs are applied at their own step instead).",
           "file": "Altruist/Gaming/Main/Core/General/LagCompensation/ILagCompensationService.cs"
         },
         {

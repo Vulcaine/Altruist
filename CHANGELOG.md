@@ -4,10 +4,23 @@ All notable changes to the Altruist framework are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.1-beta] - 2026-11-23
+
+Fixes from running a large 3D game on the framework. Two breaking changes: `AltruistEngine.CurrentTick` is replaced by the injected `IEngineFrameCounter`, and the zone managers take only the partition list.
+
+### Changed
+- **Each engine counts its own frames (`IEngineFrameCounter`)** — breaking: the static `AltruistEngine.CurrentTick` is gone. Two engines in one process (a test host's in-process root next to a live server) both wrote it, so a cooldown set against one engine's frame was checked against the other's. The engine advances the `EngineFrameCounter` service; game code injects `IEngineFrameCounter` and reads `Frame` (or `AltruistEngine.Frame`). The constructors of `GameClientSynchronizator`, `LagCompensationService`, `GameWorldOrganizer3D` and `EntitySyncService` take the counter.
+- **Zones may span partitions** — breaking: `ZoneManager2D` and `ZoneManager3D` take only the partition list. A zone had to fit inside one partition, though nothing used the containing partition, so maps placed at their real atlas coordinates could not be registered when they crossed a partition border. A zone now needs a positive size and has to lie inside the world.
+- **`IVirtualIdAllocator` is the one source of VirtualIds** — the 3D world manager draws from it for objects spawned with id 0 instead of a private static counter, and games take ids they need before a spawn from the same service, so ids from separate counters no longer collide on the wire.
+
 ### Added
 - **`CycleUnit.IntervalSeconds`** — `[Cycle(5, CycleUnit.IntervalSeconds)]` runs once every 5 seconds by wall clock. Before, nothing slower than once a second could be declared except by counting frames or with cron (whole minutes), and `CycleUnit.Seconds` reads as a period although it counts runs per second: `[Cycle(5, CycleUnit.Seconds)]` runs 5 times a second.
 
 ### Fixed
+- **A client that stops reading is dropped over TCP** — the outbound queues aborted it through `AltruistConnection.Abort`, which the TCP connection did not override, so the connection stayed open and received nothing. `TcpConnection.Abort` resets the socket, so the normal disconnect path runs; the abort warning names the packet types the queue held.
+- **Quest handlers for one subject run one at a time** — two kills firing together could interleave a quest's state changes; a failing handler's exception now reaches the caller as thrown instead of as a `TargetInvocationException`.
+- **Server start writes no "Failed to resolve" lines** — the PostConstruct pass skips open generic registrations, and authorization is registered in the web host whose endpoint data source its policy cache needs.
+- **A test class whose setup throws fails its tests with that exception** — instead of killing the test host, which left the run saying "No test is available". The TCP test client reads every frame as it arrives, as a game client does, and `DrainAsync` no longer cuts a frame in half.
 - **The 3D visibility tick no longer fails while entities spawn** — an observer's visible set was a plain `HashSet` that spawn and destroy handlers changed from another thread while the tick walked it, so activating a busy zone (thousands of spawns) failed ticks with "Collection was modified" and could corrupt the set. Each observer's set is now locked per access, the tick walks a copy, an entity is reported invisible only by whoever removed it, and no visibility event is raised under the lock. `GetVisibleEntities` returns a copy.
 - **`IAltruistRouter.Synchronize` is the gaming implementation whatever the assembly scan order** — the core placeholder that throws `NotImplementedException` won when the gaming assembly was scanned first, so every `Synchronize.SendAsync` threw with the gaming module on. The placeholder now steps aside when an `IClientSynchronizator` is already registered.
 - **`[PostConstruct]` runs on every provider's singletons** — the hook ran once per implementation type for the whole process, so a second service provider (a test class container, then the live test server) got singletons whose hooks never ran; `ServerStatus` never connected and the live server answered 503 "Service is not ready". The hook now runs once per instance: an instance registered under several service types, or processed again, still runs it once.

@@ -6,7 +6,7 @@
     <RootNamespace>Altruist.Gaming.Rooms</RootNamespace>
     <AssemblyName>Rooms</AssemblyName>
     <PackageId>Altruist.Gaming.Rooms</PackageId>
-    <Version>0.10.0-beta</Version>
+    <Version>0.10.1-beta</Version>
   </PropertyGroup>
 
   <ItemGroup>

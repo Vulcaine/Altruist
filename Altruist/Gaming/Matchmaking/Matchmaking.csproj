@@ -6,7 +6,7 @@
     <RootNamespace>Altruist.Gaming.Matchmaking</RootNamespace>
     <AssemblyName>Matchmaking</AssemblyName>
     <PackageId>Altruist.Gaming.Matchmaking</PackageId>
-    <Version>0.10.0-beta</Version>
+    <Version>0.10.1-beta</Version>
   </PropertyGroup>
 
   <ItemGroup>
