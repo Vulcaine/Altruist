@@ -20,7 +20,7 @@ namespace Altruist.Gaming;
 public interface IPositionHistoryRecorder
 {
     /// <summary>Records the positions of <paramref name="entities"/> for <paramref name="tick"/>. Called on the engine thread once per tick; enumerate the entities right away (do not keep the sequence).</summary>
-    /// <param name="tick">The engine tick (<c>AltruistEngine.CurrentTick</c>).</param>
+    /// <param name="tick">The engine tick (<see cref="Altruist.Engine.IEngineFrameCounter.Frame"/>).</param>
     /// <param name="entities">Every object of every 3D world this tick.</param>
     void RecordSnapshot(long tick, IEnumerable<IWorldObject3D> entities);
 }
